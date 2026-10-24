@@ -114,6 +114,16 @@ async fn a_phone_pairs_with_the_desktops_approval_and_signs_in() {
     assert_eq!(status, StatusCode::OK);
     assert!(home.contains("Studio"));
 
+    // A signed-in phone reads the addresses again without a new session.
+    let request = HttpRequest::get("/api/origins")
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, _, origins) = send(&state, request).await;
+    assert_eq!(status, StatusCode::OK);
+    let origins: Value = serde_json::from_str(&origins).unwrap();
+    assert_eq!(origins["origins"], json!(state.origins()));
+
     // Revoking from the desktop ends the session at once.
     control(
         &state,

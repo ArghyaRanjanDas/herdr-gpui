@@ -130,6 +130,12 @@ pub(super) async fn session(
     })))
 }
 
+/// The addresses served now, for a phone that signed in earlier: networks
+/// change while a session lasts, and its saved list must follow them.
+pub(super) async fn origins(State(state): State<Shared>, _device: Device) -> Json<Value> {
+    Json(json!({ "origins": state.origins() }))
+}
+
 pub(super) async fn command(
     State(state): State<Shared>,
     _device: Device,

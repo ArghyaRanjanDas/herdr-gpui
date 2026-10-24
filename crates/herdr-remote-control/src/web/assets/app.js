@@ -154,6 +154,17 @@ async function signIn() {
   rememberOrigins(session.origins);
 }
 
+/// Saves the addresses served now on every connect, not only at sign-in: a
+/// session outlives a network change, and the installed app must still find
+/// the computer on its next launch.
+async function refreshOrigins() {
+  try {
+    rememberOrigins((await (await api("/api/origins")).json()).origins);
+  } catch {
+    // The next connect tries again.
+  }
+}
+
 /// Keeps the addresses the computer serves now first, then the ones known
 /// before, which may work again on another network.
 function rememberOrigins(current) {
@@ -812,6 +823,7 @@ async function start() {
     app.origin = await reach();
     await signIn();
     route();
+    refreshOrigins();
   } catch (error) {
     if (error.status === 403 || error.status === 404) return forget();
     show("t-offline");

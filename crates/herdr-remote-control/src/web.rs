@@ -117,6 +117,7 @@ pub(crate) fn router(state: Shared) -> Router {
         .route("/api/pair/claim", post(api::claim))
         .route("/api/pair/claim/{claim}", get(api::claim_status))
         .route("/api/session/challenge", post(api::challenge))
+        .route("/api/origins", get(api::origins))
         .route("/api/session", post(api::session))
         .route("/api/chat/{pane}/command", post(api::command))
         .route(

@@ -22,6 +22,7 @@ async fn fragments_and_the_stream_need_a_session() {
         "/f/chat/p1",
         "/api/stream?view=home",
         "/api/push/key",
+        "/api/origins",
     ] {
         let (status, _, _) = send(&state, get(path)).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED, "{path}");
