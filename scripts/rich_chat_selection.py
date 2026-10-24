@@ -2,6 +2,7 @@
 
 import ctypes as c
 import json
+import math
 from pathlib import Path
 import subprocess
 import time
@@ -95,7 +96,9 @@ def capture_selection(env, directory, app):
             x.XSync(display, False)
 
         def motion(point):
-            test.XTestFakeMotionEvent(display, -1, round(point[0]) + origin_x.value, round(point[1]) + origin_y.value, 0)
+            # Carets at the exclusive right edge are nudged inside by half a
+            # pixel; flooring keeps XTest's integer coordinate inside too.
+            test.XTestFakeMotionEvent(display, -1, math.floor(point[0]) + origin_x.value, math.floor(point[1]) + origin_y.value, 0)
             x.XSync(display, False)
 
         probe = record("RICH CHAT SELECTION PROBE ")

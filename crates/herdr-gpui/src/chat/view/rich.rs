@@ -205,27 +205,29 @@ impl HerdrWindow {
                 .debug_selector(|| "chat-prose".into())
                 .w_full()
                 .min_w_0();
-            let view = if targets.is_empty() {
-                view.child(text)
+            let content = if targets.is_empty() {
+                text.into_any_element()
             } else {
                 let ranges = targets.iter().map(|(range, _)| range.clone()).collect();
                 let links = context.links.clone();
                 let guard = fragment.clone();
-                view.child(InteractiveText::new("rich-prose", text).on_click(
-                    ranges,
-                    move |index, _, cx| {
+                InteractiveText::new("rich-prose", text)
+                    .on_click(ranges, move |index, _, cx| {
                         if guard.as_ref().is_none_or(Fragment::allows_link)
                             && let Some((_, url)) = targets.get(index)
                         {
                             links.open(url, cx);
                         }
-                    },
-                ))
+                    })
+                    .into_any_element()
             };
+            // The selection canvas precedes glyphs so aligned background
+            // marks paint behind the text and retain normal text contrast.
             return match fragment {
                 Some(fragment) => fragment.wrap(view, layout, context.cx),
                 None => view,
-            };
+            }
+            .child(content);
         }
         let mut children = Vec::new();
         let mut offset = 0;
@@ -249,6 +251,9 @@ impl HerdrWindow {
                             None => StyledText::new(word.to_owned()).with_highlights(marks),
                         };
                         let layout = styled.layout().clone();
+                        if let Some(selected) = selected.as_ref() {
+                            item = selected.wrap(item, layout, context.cx);
+                        }
                         item = if let Some(url) = &style.link {
                             let url = url.clone();
                             let links = context.links.clone();
@@ -264,9 +269,6 @@ impl HerdrWindow {
                         } else {
                             item.child(styled)
                         };
-                        if let Some(selected) = selected {
-                            item = selected.wrap(item, layout, context.cx);
-                        }
                         children.push(item.into_any_element());
                     }
                 }
@@ -431,6 +433,16 @@ impl HerdrWindow {
                         row.border_t_1().border_color(rgb(self.theme.active))
                     })
                     .children(row.iter().enumerate().map(|(column, content)| {
+                        let selection =
+                            context
+                                .selection
+                                .fragment(block, row_index, column)
+                                .map(|fragment| match align.get(column) {
+                                    Some(Alignment::Center | Alignment::Right) => {
+                                        fragment.aligned()
+                                    }
+                                    _ => fragment,
+                                });
                         div()
                             .id(("cell", row_index * columns + column))
                             .debug_selector(move || format!("chat-table-cell-{row_index}-{column}"))
@@ -444,17 +456,13 @@ impl HerdrWindow {
                                 cell.border_l_1().border_color(rgb(self.theme.active))
                             })
                             .child(
-                                self.rich_inline(
-                                    content,
-                                    context.selection.fragment(block, row_index, column),
-                                    context,
-                                )
-                                .when(align.get(column) == Some(&Alignment::Center), |cell| {
-                                    cell.justify_center().text_align(TextAlign::Center)
-                                })
-                                .when(align.get(column) == Some(&Alignment::Right), |cell| {
-                                    cell.justify_end().text_align(TextAlign::Right)
-                                }),
+                                self.rich_inline(content, selection, context)
+                                    .when(align.get(column) == Some(&Alignment::Center), |cell| {
+                                        cell.justify_center().text_align(TextAlign::Center)
+                                    })
+                                    .when(align.get(column) == Some(&Alignment::Right), |cell| {
+                                        cell.justify_end().text_align(TextAlign::Right)
+                                    }),
                             )
                     }))
             }))

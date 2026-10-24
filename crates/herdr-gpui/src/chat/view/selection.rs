@@ -291,6 +291,7 @@ impl<'a> Scope<'a> {
             key,
             range: 0..segment.text().len(),
             selected: self.selection.highlight(self.document, key),
+            backgrounds: None,
             geometry: self.geometry.clone(),
             frame: self.geometry.0.borrow().frame,
         })
@@ -314,15 +315,24 @@ pub(crate) struct Fragment {
     key: Key,
     range: Range<usize>,
     selected: Option<Range<usize>>,
+    backgrounds: Option<Rc<RefCell<Vec<Background>>>>,
     geometry: Geometry,
     frame: u64,
 }
 
 impl Fragment {
+    /// GPUI 0.3.6 positions aligned glyphs correctly, but ends their background
+    /// runs at an unaligned x. Paint those marks from the same shaped rows.
+    pub(crate) fn aligned(mut self) -> Self {
+        self.backgrounds = Some(Rc::default());
+        self
+    }
+
     pub(crate) fn range(&self, range: Range<usize>) -> Self {
         let mut fragment = self.clone();
         let start = range.start.clamp(self.range.start, self.range.end);
         fragment.range = start..range.end.clamp(start, self.range.end);
+        fragment.backgrounds = self.backgrounds.as_ref().map(|_| Rc::default());
         fragment
     }
 
@@ -342,7 +352,18 @@ impl Fragment {
         theme: &Theme,
     ) -> StyledText {
         let text = text.into();
-        let marks = highlights(&text, marks.into_iter().collect(), self.selected(), theme);
+        let mut marks = highlights(&text, marks.into_iter().collect(), self.selected(), theme);
+        if let Some(backgrounds) = &self.backgrounds {
+            *backgrounds.borrow_mut() = marks
+                .iter_mut()
+                .filter_map(|(range, style)| {
+                    style.background_color.take().map(|color| Background {
+                        range: range.clone(),
+                        color,
+                    })
+                })
+                .collect();
+        }
         StyledText::new(text).with_highlights(marks)
     }
 
@@ -376,6 +397,10 @@ impl Fragment {
 
     fn attach(&self, view: Div, layout: Option<TextLayout>, cx: &mut Context<HerdrWindow>) -> Div {
         let geometry = self.geometry.clone();
+        let backgrounds = self
+            .backgrounds
+            .as_ref()
+            .map(|marks| marks.borrow().clone());
         let target = Hit {
             key: self.key,
             range: self.range.clone(),
@@ -431,7 +456,16 @@ impl Fragment {
                         target.align = window.text_style().text_align;
                         target.clone()
                     },
-                    move |_, target, _, _| {
+                    move |_, target, window, _| {
+                        if let (Some(layout), Some(backgrounds)) = (&target.layout, &backgrounds) {
+                            for background in backgrounds {
+                                for bounds in
+                                    background_rects(layout, target.align, &background.range)
+                                {
+                                    window.paint_quad(fill(bounds, background.color));
+                                }
+                            }
+                        }
                         // List prepaint may be rolled back and retried. Only
                         // committed paint has the mouse handlers corresponding
                         // to these coordinates; discarded layouts stay local.
@@ -449,6 +483,64 @@ impl Fragment {
                 .inset_0(),
             )
     }
+}
+
+#[derive(Clone)]
+struct Background {
+    range: Range<usize>,
+    color: Hsla,
+}
+
+/// One rectangle per selected wrapped row, including a partial final row.
+/// Glyph positions supply the widths, so Unicode, shaping and font overrides
+/// agree with the painted text. Alignment is applied separately on each row.
+fn background_rects(
+    layout: &TextLayout,
+    align: TextAlign,
+    range: &Range<usize>,
+) -> Vec<Bounds<Pixels>> {
+    let bounds = layout.bounds();
+    let line_height = layout.line_height();
+    let mut result = Vec::new();
+    let mut line_start = 0;
+    let mut y = bounds.top();
+    for line in layout.line_layouts() {
+        let unwrapped = &line.unwrapped_layout;
+        let ends = line
+            .wrap_boundaries
+            .iter()
+            .map(|boundary| unwrapped.runs[boundary.run_ix].glyphs[boundary.glyph_ix].index)
+            .chain([line.len()]);
+        let mut row_start = 0;
+        for row_end in ends {
+            let from = range.start.saturating_sub(line_start).max(row_start);
+            let to = range.end.saturating_sub(line_start).min(row_end);
+            if from < to {
+                let row_x = unwrapped.x_for_index(row_start);
+                let row_width = unwrapped.x_for_index(row_end) - row_x;
+                let remaining = bounds.size.width - row_width;
+                let shift = match align {
+                    TextAlign::Left => px(0.),
+                    TextAlign::Center => remaining * 0.5,
+                    TextAlign::Right => remaining,
+                };
+                result.push(Bounds::new(
+                    point(
+                        bounds.left() + shift + unwrapped.x_for_index(from) - row_x,
+                        y,
+                    ),
+                    size(
+                        unwrapped.x_for_index(to) - unwrapped.x_for_index(from),
+                        line_height,
+                    ),
+                ));
+            }
+            row_start = row_end;
+            y += line_height;
+        }
+        line_start += line.len() + 1;
+    }
+    result
 }
 
 fn highlights(

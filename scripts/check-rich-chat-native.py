@@ -54,8 +54,8 @@ def capture(args, case, theme, width, root):
         opener_bin.mkdir()
         opener_log = directory / "unexpected-open.log"
         env["HERDR_TEST_OPEN_LOG"] = str(opener_log)
-        for name in ("xdg-open", "gio", "gnome-open", "kde-open", "sensible-browser"):
-            stub = opener_bin / name
+        for opener in ("xdg-open", "gio", "gnome-open", "kde-open", "sensible-browser"):
+            stub = opener_bin / opener
             stub.write_text('#!/bin/sh\nprintf "%s\\n" "$0 $*" >> "$HERDR_TEST_OPEN_LOG"\nexit 0\n')
             stub.chmod(0o700)
         env["PATH"] = str(opener_bin) + os.pathsep + env.get("PATH", "")
