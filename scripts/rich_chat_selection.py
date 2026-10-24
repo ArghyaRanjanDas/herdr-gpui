@@ -1,6 +1,7 @@
 """Exercise native drag/copy only on the capture script's private Xvfb display."""
 
 import ctypes as c
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -101,9 +102,55 @@ def capture_selection(env, directory, app):
             test.XTestFakeMotionEvent(display, -1, math.floor(point[0]) + origin_x.value, math.floor(point[1]) + origin_y.value, 0)
             x.XSync(display, False)
 
+        def capture_stable_frame(output):
+            # Selection state is reported before its repaint. Wait for stable
+            # pixels so a screenshot cannot retain an intermediate drag frame.
+            deadline = time.monotonic() + 4
+            previous = None
+            stable_since = None
+            while time.monotonic() < deadline:
+                capture = subprocess.run(
+                    ["magick", "import", "-display", display_name, "-window", "root",
+                     "ppm:-"],
+                    env=env, capture_output=True, check=True, timeout=5,
+                )
+                # Ignore animated sidebar/status chrome. Compare actual
+                # transcript pixels, without PNG timestamps or metadata.
+                kind, dimensions, maximum, pixels = capture.stdout.split(b"\n", 3)
+                if kind != b"P6":
+                    raise RuntimeError("Native screenshot did not return RGB pixels")
+                width, height = map(int, dimensions.split())
+                stride = 3 * (2 if int(maximum) > 255 else 1)
+                left, top, right, bottom = viewport
+                if not (0 <= left < right <= width and 0 <= top < bottom <= height):
+                    raise RuntimeError("Transcript viewport is outside the native screenshot")
+                region = b"".join(pixels[(row * width + left) * stride:
+                                         (row * width + right) * stride]
+                                  for row in range(top, bottom))
+                current = hashlib.sha256(region).digest()
+                now = time.monotonic()
+                if current != previous:
+                    previous, stable_since = current, now
+                elif now - stable_since >= 0.2:
+                    subprocess.run(["magick", "ppm:-", str(output)], input=capture.stdout,
+                                   env=env, check=True, timeout=5)
+                    return
+                if app.poll() is not None:
+                    raise RuntimeError("Selection fixture exited before a stable capture")
+                time.sleep(0.05)
+            raise TimeoutError("Native selection screenshot did not stabilize")
+
         probe = record("RICH CHAT SELECTION PROBE ")
         if probe is None:
             raise RuntimeError("Missing native selection coordinates")
+        geometry = record("RICH CHAT GEOMETRY ")
+        if geometry is None:
+            raise RuntimeError("Missing native transcript viewport")
+        area = geometry["viewport"]
+        viewport = (math.floor(area["x"]) + origin_x.value,
+                    math.floor(area["y"]) + origin_y.value,
+                    math.ceil(area["x"] + area["width"]) + origin_x.value,
+                    math.ceil(area["y"] + area["height"]) + origin_y.value)
         cases = [
             ("forward", probe["from"], probe["to"], probe["expected"]),
             ("reverse", probe["to"], probe["from"], probe["expected"]),
@@ -129,7 +176,7 @@ def capture_selection(env, directory, app):
             chord(["Control_L", "c"])
             state = wait_state(expected, expected)
             output = directory / f"selection-{name}.png"
-            subprocess.run(["magick", "import", "-display", display_name, "-window", "root", str(output)], env=env, check=True, timeout=10)
+            capture_stable_frame(output)
             results.append({"case": name, "state": state, "screenshot": output.name})
             (directory / "selection.json").write_text(json.dumps({"status": "passed" if len(results) == len(cases) else "running", "checks": results}, indent=2, ensure_ascii=False))
     finally:
