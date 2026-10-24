@@ -112,20 +112,7 @@ pub(in crate::settings_window) fn health_line(health: &Health, busy: bool) -> St
     }
 }
 
-/// "Last seen 2 h ago · Notifications on · Connected".
-pub(in crate::settings_window) fn device_line(device: &Device, now_ms: u64) -> String {
-    let seen = match device.last_seen_ms {
-        _ if device.connected => "Connected now".to_owned(),
-        Some(seen) => format!("Last seen {}", crate::remote::ago(seen, now_ms)),
-        None => "Never connected".to_owned(),
-    };
-    let push = if device.push {
-        "notifications on"
-    } else {
-        "notifications off"
-    };
-    format!("{seen} \u{b7} {push}")
-}
+pub(in crate::settings_window) use crate::remote::device_line;
 
 impl SettingsWindow {
     /// The page shows: keep the daemon's details fresh, and make the
@@ -275,6 +262,7 @@ impl SettingsWindow {
         div()
             .flex()
             .flex_col()
+            .child(self.remote_pair_card(enabled, cx))
             .child(ui::section(theme, "Service", None))
             .child(switch_row)
             .child(
@@ -293,6 +281,21 @@ impl SettingsWindow {
                     Preference::Remote(Edit::KeepRunning(!remote.keep_running)),
                     cx,
                 )),
+            )
+            .child(
+                ui::row(theme, "remote-restart", "Restart the daemon")
+                    .description(
+                        "Starts it again from the binary beside Herdr UI, as after an update. \
+                         Phones reconnect on their own.",
+                    )
+                    .control(
+                        ui::button(theme, "remote-restart-button", "Restart", enabled && !busy)
+                            .when(enabled && !busy, |button| {
+                                button.on_click(cx.listener(|_, _, _, cx| {
+                                    Supervisor::restart(cx);
+                                }))
+                            }),
+                    ),
             )
             .child(ui::section(theme, "Connection", None))
             .child(self.remote_number_row(
@@ -359,27 +362,82 @@ impl SettingsWindow {
                 " days",
                 cx,
             ))
-            .child(
-                ui::row(theme, "remote-pair", "Pair a device")
-                    .description(if enabled {
-                        "Shows a QR code to scan with the phone's camera; you approve the device \
-                         in the main window."
-                    } else {
-                        "Turn remote control on first."
-                    })
-                    .control(
-                        ui::button(
-                            theme,
-                            "remote-pair-button",
-                            "Pair a device\u{2026}",
-                            enabled,
-                        )
-                        .when(enabled, |button| {
-                            button.on_click(cx.listener(|this, _, _, cx| this.pair_remote(cx)))
-                        }),
-                    ),
-            )
             .child(self.remote_devices(cx))
+    }
+
+    /// Pairing first, where it cannot be missed: what the page is for most
+    /// of the time.
+    fn remote_pair_card(&self, enabled: bool, cx: &mut Context<Self>) -> Stateful<Div> {
+        let theme = &self.theme;
+        let connected = Supervisor::connected(cx);
+        let note = match (enabled, connected) {
+            (false, _) => {
+                "Turn remote control on, then scan a code with the phone's camera.".to_owned()
+            }
+            (true, 0) => {
+                "Scan a code with the phone's camera, then approve the phone here.".to_owned()
+            }
+            (true, 1) => {
+                "1 phone connected. Scan a code with another phone's camera to add it.".to_owned()
+            }
+            (true, count) => format!(
+                "{count} phones connected. Scan a code with another phone's camera to add it."
+            ),
+        };
+        let fill = theme.primary();
+        let button = div()
+            .id("remote-pair-button")
+            .debug_selector(|| "remote-pair-button".into())
+            .role(Role::Button)
+            .aria_label("Pair a phone");
+        let button = crate::accessibility::disabled(button, !enabled)
+            .flex_none()
+            .whitespace_nowrap()
+            .px(px(12.))
+            .py(px(5.))
+            .rounded(px(crate::config::corners::CONTROL))
+            .bg(rgb(fill))
+            .text_color(rgb(theme.text_on(fill)))
+            .font_weight(FontWeight::MEDIUM)
+            .when(enabled, |button| {
+                button
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, _, cx| this.pair_remote(cx)))
+            })
+            .when(!enabled, |button| button.opacity(0.5))
+            .child("Pair a phone\u{2026}");
+        div()
+            .id("remote-pair-card")
+            .debug_selector(|| "remote-pair-card".into())
+            .mt(px(8.))
+            .mb(px(4.))
+            .p(px(12.))
+            .flex()
+            .items_center()
+            .gap(px(12.))
+            .rounded(px(crate::config::corners::PANEL))
+            .bg(rgb(theme.primary_wash()))
+            .child(
+                svg()
+                    .path("icons/phone.svg")
+                    .size(px(24.))
+                    .flex_none()
+                    .text_color(rgb(theme.primary())),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .child(
+                        div()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child("Pair a phone"),
+                    )
+                    .child(div().text_color(rgb(theme.subtext())).child(note)),
+            )
+            .child(button)
     }
 
     fn remote_number_row(

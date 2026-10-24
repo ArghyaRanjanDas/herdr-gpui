@@ -140,6 +140,23 @@ impl Devices {
         Ok(())
     }
 
+    /// Gives a device a new key, as its Home Screen app takes over from the
+    /// browser. The browser's push subscription goes with the old key.
+    /// Blocking.
+    pub(crate) fn rekey(&mut self, id: &DeviceId, public_key: PublicKey) -> Result<()> {
+        let record = self.record_mut(id)?;
+        let old = (
+            std::mem::replace(&mut record.public_key, public_key),
+            record.push.take(),
+        );
+        let id = id.clone();
+        self.save_or_undo(move |devices| {
+            if let Some(record) = devices.records.iter_mut().find(|record| record.id == id) {
+                (record.public_key, record.push) = old;
+            }
+        })
+    }
+
     /// Forgets a device; `false` when there was none. Blocking.
     pub(crate) fn revoke(&mut self, id: &DeviceId) -> Result<bool> {
         let Some(index) = self.records.iter().position(|record| &record.id == id) else {
@@ -247,13 +264,14 @@ fn store_error(operation: StoreOperation, path: &Path, source: io::Error) -> Err
 /// Replaces `path` with `content` through a temporary file in the same
 /// directory, created 0600 on Unix. Windows has no mode bits; the file
 /// inherits the private state directory's ACL.
-fn write_private(path: &Path, content: &[u8]) -> Result<()> {
+pub(super) fn write_private(path: &Path, content: &[u8]) -> Result<()> {
     static NEXT_TEMP: AtomicU64 = AtomicU64::new(1);
     let parent = path.parent().unwrap_or(Path::new("."));
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
     fs::create_dir_all(parent)
         .map_err(|source| store_error(StoreOperation::CreateDirectory, parent, source))?;
     let temp = parent.join(format!(
-        ".{FILE_NAME}-{}-{}.tmp",
+        ".{name}-{}-{}.tmp",
         std::process::id(),
         NEXT_TEMP.fetch_add(1, Ordering::Relaxed)
     ));

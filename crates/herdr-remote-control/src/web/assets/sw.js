@@ -3,7 +3,7 @@
 // address), and shows push notifications. It never caches chat content.
 "use strict";
 
-const SHELL = "herdr-shell-v1";
+const SHELL = "herdr-shell-v2";
 const FILES = [
   "/",
   "/assets/app.css",
@@ -14,7 +14,10 @@ const FILES = [
   "/assets/icon-192.png",
   "/manifest.webmanifest",
 ];
-const ROUTES = ["/", "/board", "/new", "/new-chat", "/settings", "/pair"];
+// Not `/pair`: a scan must reach the computer itself. When this phone no
+// longer trusts its certificate, a cached page would hide Safari's warning
+// and leave pairing failing with nothing to accept.
+const ROUTES = ["/", "/board", "/new", "/new-chat", "/settings"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(SHELL).then((cache) => cache.addAll(FILES)).then(() => self.skipWaiting()));

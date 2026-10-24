@@ -1,5 +1,5 @@
-//! Remote control: the daemon's status and devices, the pairing dialog, and
-//! the revoke confirmation. The daemon's own types are reused as they are;
+//! Remote control: the daemon's status and devices, the pairing dialog, the
+//! revoke confirmation, and restarting the daemon. The daemon's own types are reused as they are;
 //! no pairing token ever crosses this socket.
 use herdr_remote_control::control::{Device, Status};
 use serde::{Deserialize, Serialize};
@@ -19,13 +19,15 @@ pub enum RemoteOp {
     Revoke {
         device: String,
     },
+    /// Restarts the daemon from the binary beside the app.
+    Restart,
 }
 
 impl RemoteOp {
     pub fn wait_seconds(&self) -> u64 {
         match self {
             Self::Status | Self::Devices | Self::Revoke { .. } => DAEMON_WAIT_SECONDS,
-            Self::Pair => 0,
+            Self::Pair | Self::Restart => 0,
         }
     }
 }

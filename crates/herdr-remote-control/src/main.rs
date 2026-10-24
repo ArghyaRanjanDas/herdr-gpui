@@ -23,6 +23,12 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    // Standard error is the service's log file (`daemon.log`).
+    tracing_subscriber::fmt()
+        .with_ansi(false)
+        .with_max_level(tracing::Level::INFO)
+        .with_writer(std::io::stderr)
+        .init();
     let runtime = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .thread_name("herdr-remote-control")

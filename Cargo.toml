@@ -159,7 +159,7 @@ thiserror            = "2"
 tokio                = { features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"], version = "1" }
 # Server-rendered HTML for the remote control web app, escaped by default.
 maud                 = "0.27"
-axum                 = { default-features = false, features = ["http1", "json", "query", "tokio"], version = "0.8" }
+axum                 = { default-features = false, features = ["http1", "json", "matched-path", "query", "tokio"], version = "0.8" }
 # Drives herdr-remote-control's router in tests without a socket; axum already links it.
 tower                = { default-features = false, features = ["util"], version = "0.5" }
 tokio-rustls         = { default-features = false, features = ["ring", "tls12"], version = "0.26" }

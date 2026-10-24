@@ -18,6 +18,7 @@ mod authority;
 mod names;
 mod profile;
 mod resolver;
+mod stored;
 
 pub(crate) use authority::Authority;
 pub(crate) use names::Names;

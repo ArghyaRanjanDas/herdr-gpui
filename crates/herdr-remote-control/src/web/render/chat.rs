@@ -3,7 +3,7 @@
 //! history, the pending question as a bottom sheet, and the composer.
 //! Each region has an id the stream replaces as the chat changes.
 
-use super::{markdown, ring, status_word};
+use super::{icons, markdown, ring, status_word};
 use crate::hub::{ChatRow, View, Workspace};
 use herdr_chat_protocol::{
     Author, Entry, EntryKind, NoticeLevel, OptionCategory, OptionKind, Permission, PermissionKind,
@@ -54,7 +54,7 @@ fn head(workspace: &Workspace, row: &ChatRow, view: &View, now_ms: u64) -> Marku
     html! {
         header id="chat-head" class="sticky top-0 z-10 bg-bg/90 backdrop-blur border-b border-line" {
             div class="flex items-center gap-2.5 px-3.5 pt-1.5 pb-2" {
-                a href="/" data-nav class="text-accent text-[28px] leading-none px-1" aria-label="Back" { "‹" }
+                a href="/" data-nav class="grid place-items-center text-accent w-8 h-9 -ml-1.5 shrink-0" aria-label="Back" { (icons::chevron_left(28)) }
                 span class="flex flex-col min-w-0 flex-1" {
                     b class="truncate" { (row.title) }
                     small class="text-muted truncate" {

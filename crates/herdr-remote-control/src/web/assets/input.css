@@ -66,11 +66,17 @@
 
 @layer base {
   html, body { background: var(--bg); color: var(--text); }
+  /* No double-tap zoom: quick taps on a chevron or a key are taps. */
+  html { touch-action: manipulation; }
   body {
     font: 15px/1.45 var(--font-sans);
     -webkit-text-size-adjust: 100%;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
     overscroll-behavior-y: none;
+    /* An installed iOS web app widens the whole page to fit anything that
+       sticks out, unlike Safari; `clip` keeps it at the screen's width
+       without making the body a scroll container, so sticky still works. */
+    overflow-x: clip;
   }
   [x-cloak] { display: none !important; }
   button, select, input, textarea { font: inherit; color: inherit; }
@@ -78,6 +84,7 @@
 
 @layer components {
   .group-list { @apply bg-surface rounded-2xl overflow-hidden; }
+  .searching [data-group] > ul { display: block !important; }
   .row { @apply relative flex items-center gap-3 px-3 py-2.5 min-h-11; }
   .group-list > li + li > .row::before, .group-list > li + li.row::before, .group-list > .row + .row::before {
     content: ""; @apply absolute top-0 left-[52px] right-0 border-t border-line;
@@ -91,6 +98,10 @@
     background: color-mix(in srgb, var(--amber) 16%, var(--surface));
     border-color: color-mix(in srgb, var(--amber) 40%, transparent);
   }
+  .install-hint {
+    @apply fixed left-3 right-3 z-30 flex items-center gap-3 p-3 rounded-2xl bg-surface border border-line shadow-xl;
+    bottom: calc(84px + env(safe-area-inset-bottom));
+  }
   .toolbar {
     @apply fixed left-4 right-4 flex justify-between items-center z-20;
     bottom: calc(18px + env(safe-area-inset-bottom));
@@ -101,7 +112,7 @@
     backdrop-filter: blur(18px) saturate(1.6);
     -webkit-backdrop-filter: blur(18px) saturate(1.6);
   }
-  .glass > a { @apply relative min-w-7 text-center; }
+  .glass > a { @apply relative min-w-7 grid place-items-center; }
   .ring {
     @apply inline-block w-6 h-6 rounded-full;
     background: conic-gradient(var(--accent) calc(var(--p) * 1%), var(--raised) 0);
@@ -170,6 +181,8 @@
     /* 16px keeps Safari from zooming the page when it takes focus. */
     font-size: 16px;
   }
+  .pill-button { @apply h-9 px-4 rounded-full bg-raised text-[15px] font-semibold grid place-items-center shrink-0; }
+  .pill-button.primary { @apply bg-accent text-white; }
   .tbtn { @apply w-8 h-8 rounded-full grid place-items-center bg-raised text-[13px] font-semibold shrink-0; }
   .tbtn.herdr { @apply bg-accent text-white; }
   .tchip { @apply shrink-0 text-xs px-2.5 py-1 rounded-full bg-raised whitespace-nowrap; }
@@ -192,11 +205,10 @@
   .tsheet .grab { @apply w-9 h-1 rounded-full bg-line mx-auto mb-2; }
   .tsheet h4 { @apply text-xs uppercase tracking-wider text-muted font-semibold mb-2 px-0.5; }
   .tiles { @apply grid grid-cols-4 gap-2; }
-  .tile { @apply flex flex-col items-center gap-1 bg-raised rounded-xl py-2.5 text-[11.5px]; }
-  .tile i { @apply not-italic text-lg; }
+  .tile { @apply flex flex-col items-center gap-1.5 bg-raised rounded-2xl py-3.5 text-[13.5px] font-medium; }
   .tile.danger { @apply text-red; }
   .tsheet-list { @apply grid gap-px mt-3 rounded-xl overflow-hidden; }
-  .tsheet-list > * { @apply flex justify-between bg-raised px-3 py-3 text-[14px] text-left w-full; }
+  .tsheet-list > * { @apply flex justify-between items-center bg-raised px-4 py-3.5 text-[16px] text-left w-full; }
   /* The 16-color palette, from the theme; 256-color and RGB values come
      inline. */
   .t-fg0 { color: var(--t0); } .t-fg1 { color: var(--t1); } .t-fg2 { color: var(--t2); } .t-fg3 { color: var(--t3); }

@@ -35,6 +35,7 @@ server = [
     "dep:time",
     "dep:tokio",
     "dep:tokio-rustls",
+    "dep:tracing-subscriber",
     "dep:ureq",
     "dep:url",
     "dep:webpki-roots",
@@ -81,6 +82,8 @@ socket2        = { optional = true, workspace = true }
 time           = { optional = true, workspace = true }
 tokio          = { optional = true, workspace = true }
 tokio-rustls   = { optional = true, workspace = true }
+# The daemon log: requests, refused handshakes, and errors phones report.
+tracing-subscriber = { features = ["fmt"], optional = true, workspace = true }
 ureq           = { optional = true, workspace = true }
 url            = { optional = true, workspace = true }
 webpki-roots   = { optional = true, workspace = true }

@@ -40,9 +40,20 @@ enum Origin {
 }
 
 impl Resolver {
-    /// A resolver presenting a leaf `authority` issues for `names` at `now`.
+    /// A resolver presenting the leaf `authority` saved before, when it
+    /// still covers `names` at `now`, or else a new one. Blocking.
     pub(crate) fn issue(authority: &Authority, names: Names, now: SystemTime) -> Result<Self> {
-        let current = Current::issue(authority, names, now)?;
+        let stored = authority.stored().map(|stored| Current {
+            key: stored.key,
+            origin: Origin::Issued {
+                expires: stored.expires,
+                names: stored.names,
+            },
+        });
+        let current = match stored {
+            Some(stored) if !stored.needs_reissue(&names, now) => stored,
+            _ => Current::issue(authority, names, now)?,
+        };
         Ok(Self {
             current: RwLock::new(current),
         })
@@ -78,7 +89,7 @@ impl Resolver {
         })
     }
 
-    /// Reissues the leaf when `names` differ from the ones it lists or it
+    /// Reissues the leaf when `names` holds one it does not list or it
     /// expires within a week of `now`, and reports whether it did. A
     /// user-supplied certificate is left alone. Blocking for the key
     /// generation only; handshakes keep the old leaf until the swap.
@@ -125,8 +136,12 @@ impl Current {
                 expires,
                 names: listed,
             } => {
-                // `duration_since` fails once `expires` has passed.
-                listed != names
+                // An address the computer no longer has stays listed: the
+                // CA only vouches for private ones, and keeping the leaf
+                // spares phones that accepted it a new warning.
+                !names.ips.iter().all(|ip| listed.ips.contains(ip))
+                    || !names.dns.iter().all(|name| listed.dns.contains(name))
+                    // `duration_since` fails once `expires` has passed.
                     || !expires
                         .duration_since(now)
                         .is_ok_and(|left| left >= RENEW_BEFORE)

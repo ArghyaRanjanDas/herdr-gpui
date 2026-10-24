@@ -78,6 +78,7 @@ impl Page {
             Self::PrMerge => "Merge pull request",
             Self::PrReview => "Pull request",
             Self::RemoteControl => "Remote control",
+            Self::RemoteDevices => "Remote control phones",
             Self::RemoveDevice => "Remove device",
             Self::RemoveWsl => "Remove WSL distribution",
             Self::RenameDevice => "Rename device",

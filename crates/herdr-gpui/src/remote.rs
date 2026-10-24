@@ -11,12 +11,14 @@
 
 mod dialog;
 mod indicator;
+pub(crate) use indicator::MENU_WIDTH;
 mod revoke;
 pub(crate) mod supervisor;
 
 pub(crate) use dialog::{PairingDialog, addresses};
 pub use herdr_remote_control::app::Error;
 pub(crate) use herdr_remote_control::app::{Result, pairing, qr, service};
+use herdr_remote_control::control::Device;
 pub(crate) use revoke::Revoke;
 pub(crate) use supervisor::{Health, Supervisor};
 
@@ -60,6 +62,21 @@ pub(crate) fn ago(then_ms: u64, now_ms: u64) -> String {
             days => format!("{days} days ago"),
         },
     }
+}
+
+/// "Last seen 2 h ago · Notifications on · Connected".
+pub(crate) fn device_line(device: &Device, now_ms: u64) -> String {
+    let seen = match device.last_seen_ms {
+        _ if device.connected => "Connected now".to_owned(),
+        Some(seen) => format!("Last seen {}", ago(seen, now_ms)),
+        None => "Never connected".to_owned(),
+    };
+    let push = if device.push {
+        "notifications on"
+    } else {
+        "notifications off"
+    };
+    format!("{seen} \u{b7} {push}")
 }
 
 /// Milliseconds since the Unix epoch, now.

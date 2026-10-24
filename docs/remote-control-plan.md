@@ -80,10 +80,20 @@ required.
   (`rcgen`, P-256, key 0600 in its private state directory) and issues a
   server certificate whose SANs list every address it serves on: the LAN
   IPv4/IPv6 addresses, `HOSTNAME.local`, and, when Tailscale is up, the
-  Tailscale `100.x` address (no MagicDNS name). When the address set changes
+  Tailscale `100.x` address (no MagicDNS name). When a new address appears
   (new Wi-Fi, Tailscale toggled), it reissues the leaf from the same CA and
   reloads it without restarting; the phone trusts the CA, so nothing changes
-  there.
+  there. The leaf is saved beside the CA (`tls/leaf.pem`, 0600) and kept
+  across restarts and when an address goes away, so a phone that only
+  accepted Safari's warning keeps working until a new address or renewal.
+- The service worker never answers `/pair` from its cache: a phone that no
+  longer trusts the certificate must see Safari's warning, not a cached page
+  whose calls fail.
+- The daemon logs to `daemon.log`: one line per request (the route, never
+  the path or query, which carry claim IDs and handoff tokens), refused TLS
+  handshakes, and errors phones report through `POST /api/log` (bounded,
+  rate limited per address, unauthenticated because pairing fails before a
+  session exists).
 - The CA is name-constrained to private address ranges, `.local`, and
   `localhost` (not `ts.net`, which would cover every tailnet), and carries
   the serverAuth EKU, so a stolen CA key cannot vouch for public sites or
@@ -133,8 +143,11 @@ own certificate and domain.
    bits, valid 60 seconds, single use, and rotates while the dialog is open.
    It sits after `#`, so it never reaches a server or proxy log. The daemon
    mints it; Herdr UI never holds secrets.
-2. The phone opens `/pair`, installs the CA if needed, names the device, and
-   generates its key. It posts the token, the public key, and the name.
+2. The phone opens `/pair` and claims it at once, asking nothing: it
+   generates its key and posts the token, the public key, and a name taken
+   from the browser (iPhone, iPad, Android phone). When the browser does not
+   yet trust the CA, the page offers it below the code; pairing works
+   without it, but the installed app and its notifications need it.
 3. The daemon derives the matching code from the token, the device key, and
    a server nonce. Both screens show it. The desktop dialog reads
    "*iPhone* wants remote control of your chats. Code 428 913. Allow / Deny".
@@ -143,6 +156,18 @@ own certificate and domain.
 4. After approval the device is stored (public key, name, created, last seen)
    and gets session tokens by signing challenges. Revoking it in Herdr UI
    ends its sessions and drops its push subscription immediately.
+5. iOS gives a Home Screen web app storage of its own, so the key saved in
+   the browser never reaches it. While the paired browser shows home, it
+   mints a single-use handoff token (24 hours, one per device, reused until
+   it nears expiry) and reloads once at `/?handoff=TOKEN`: Safari reads the
+   manifest when a page loads, so the daemon serves that page with
+   `/manifest.webmanifest?handoff=TOKEN`, whose start address carries the
+   token too. On first launch the app makes its own key and redeems the
+   token: the device keeps its ID and name, takes the new key, and the
+   browser's sessions end. No second approval: the desktop approved this
+   device already. The daemon keeps only each token's digest, saved in
+   `handoffs.json` (0600), so an icon added before the daemon restarts
+   still opens paired, and a used token stays used after one.
 
 Protections: constant-time comparisons, per-IP rate limits on `/pair` and
 challenges, an `Origin` check on every write, bounded bodies and headers, a
@@ -344,14 +369,19 @@ push-to-start on a device with a real key, and an app icon.
 
 ## Herdr UI
 
-- **Settings > Remote control**: the toggle, port, addresses served (LAN,
-  Tailscale when present), certificate (own CA or user files) with its
-  fingerprint, notification defaults, device idle expiry, and paired devices
-  with last seen and Revoke.
+- **Settings > Remote control**: a Pair a phone card first, then the
+  toggle, port, addresses served (LAN, Tailscale when present), certificate
+  (own CA or user files) with its fingerprint, notification defaults, device
+  idle expiry, and paired devices with last seen and Revoke.
+- **Title bar**, before the GitHub account, while remote control runs: a
+  "Pair phone" button until a phone is paired, then a phone with the number
+  connected now (green while any is). It opens the list of phones, each with
+  Disconnect (the revoke confirmation: a phone signs back in with its key,
+  so only revoking keeps it out), plus Pair a phone and Settings.
 - **Remote control dialog**: the QR drawn as GPUI quads from a `qrcode`
   matrix, a 60-second countdown ring, the URL and CA fingerprint, then the
-  approval step with the matching code. Reachable from the palette and the
-  status bar, which shows when a phone is connected.
+  approval step with the matching code. Reachable from the palette, the
+  title bar, and Settings.
 - **CLI** (`docs/cli.md`): `herdr-gpui remote status|pair|devices [--json]`.
   `pair` opens the dialog and never prints a token; `remote revoke DEVICE`
   opens the app's confirmation. Each gets its `control/protocol` request,

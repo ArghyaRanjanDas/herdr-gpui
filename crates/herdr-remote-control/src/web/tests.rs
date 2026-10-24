@@ -12,6 +12,7 @@ use axum::{
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use tower::ServiceExt;
 
+mod handoff;
 mod origins;
 mod pairing;
 mod routes;
@@ -42,6 +43,7 @@ pub(crate) fn state(dir: &std::path::Path) -> Shared {
         port: 7443,
         privacy: Privacy::Generic,
         push: None,
+        reports: Mutex::new(report_limit()),
         seen: Mutex::new(seen),
         uploads: Uploads::new(dir),
     })

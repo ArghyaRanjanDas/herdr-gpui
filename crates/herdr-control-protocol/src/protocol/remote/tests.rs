@@ -92,6 +92,8 @@ fn remote_replies_round_trip() {
 #[test]
 fn daemon_requests_wait_for_the_daemon_and_pairing_does_not() {
     assert_eq!(RemoteOp::Pair.wait_seconds(), 0);
+    // A restart answers once it starts; the app shows how it went.
+    assert_eq!(RemoteOp::Restart.wait_seconds(), 0);
     assert!(
         RemoteOp::Status.wait_seconds() > herdr_remote_control::control::RESPONSE_TIMEOUT.as_secs()
     );

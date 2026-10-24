@@ -325,20 +325,7 @@ pub fn reconcile(
         }
         return Ok(Outcome::Removed);
     }
-    let program = host.program.clone().ok_or(Error::ProgramMissing)?;
-    let plan = Plan {
-        program,
-        state_dir: host.state_dir.clone(),
-        config: config.clone(),
-        herdr_socket: herdr_client::ConnectTarget::Local.socket_path().ok(),
-        chat_dir: herdr_chat_protocol::endpoint_dir(),
-    };
-    let text = host.manager.text(&plan)?;
-    let bytes = host.manager.bytes(&text);
-    let current = fs::read(&host.file).ok();
-    if current.as_deref() != Some(bytes.as_slice()) {
-        private_dir(&host.state_dir)?;
-        write(&host.file, &bytes)?;
+    if write_definition(config, host)? {
         for step in host.manager.load(&host.file) {
             run(&step)?;
         }
@@ -366,6 +353,45 @@ pub fn reconcile(
             Ok(Outcome::Started)
         }
     }
+}
+
+/// Restarts the daemon from the program `host` names, as Settings' Restart
+/// does after the binary beside the app was rebuilt or updated. The
+/// definition is rewritten first when it changed. Off, nothing runs.
+pub fn restart(
+    config: &RemoteConfig,
+    host: &Host,
+    mut run: impl FnMut(&Step) -> Result<()>,
+) -> Result<Outcome> {
+    if !config.enabled {
+        return Ok(Outcome::Unchanged);
+    }
+    write_definition(config, host)?;
+    for step in host.manager.load(&host.file) {
+        run(&step)?;
+    }
+    Ok(Outcome::Started)
+}
+
+/// Writes the service definition for `config` unless the file already
+/// holds it. Returns whether it wrote.
+fn write_definition(config: &RemoteConfig, host: &Host) -> Result<bool> {
+    let program = host.program.clone().ok_or(Error::ProgramMissing)?;
+    let plan = Plan {
+        program,
+        state_dir: host.state_dir.clone(),
+        config: config.clone(),
+        herdr_socket: herdr_client::ConnectTarget::Local.socket_path().ok(),
+        chat_dir: herdr_chat_protocol::endpoint_dir(),
+    };
+    let text = host.manager.text(&plan)?;
+    let bytes = host.manager.bytes(&text);
+    if fs::read(&host.file).ok().as_deref() == Some(bytes.as_slice()) {
+        return Ok(false);
+    }
+    private_dir(&host.state_dir)?;
+    write(&host.file, &bytes)?;
+    Ok(true)
 }
 
 /// Runs one manager command through `herdr_client::new_command`.

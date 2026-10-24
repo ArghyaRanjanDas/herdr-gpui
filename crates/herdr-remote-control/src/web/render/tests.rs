@@ -9,9 +9,11 @@ use std::collections::HashMap;
 
 mod ansi;
 mod chat_view;
+mod icons;
 mod lists;
 mod markup;
 mod preview;
+mod search;
 mod terminal_view;
 
 pub(super) fn row(pane: &str) -> ChatRow {

@@ -7,12 +7,13 @@
 mod ansi;
 mod chat;
 mod home;
+mod icons;
 mod pages;
 mod terminal;
 
 pub(crate) use ansi::screen;
 pub(crate) use chat::{chat, chat_history, chat_patches};
-pub(crate) use home::{Lists, board, home, urlencode};
+pub(crate) use home::{Lists, board, home, no_match, search, urlencode};
 pub(crate) use pages::{Folders, devices, new_chat, new_workspace};
 pub(crate) use terminal::{terminal, terminal_screen};
 

@@ -9,11 +9,13 @@
 //! since the Unix epoch, so the rules are tested without clocks or sockets.
 
 mod devices;
+mod handoff;
 mod limits;
 mod pairing;
 mod session;
 
 pub(crate) use devices::Devices;
+pub(crate) use handoff::{Handoff, Handoffs};
 pub(crate) use limits::RateLimiter;
 pub(crate) use pairing::{Claim, ClaimId, NewDevice, Pairings};
 pub(crate) use session::{Challenge, ChallengeId, Session, Sessions};
@@ -255,6 +257,7 @@ impl Default for Limits {
 pub(crate) struct Auth {
     challenge_limit: RateLimiter<IpAddr>,
     devices: Devices,
+    handoffs: Handoffs,
     pair_limit: RateLimiter<IpAddr>,
     pairings: Pairings,
     /// Bumped whenever sessions end early, so open streams check again.
@@ -272,6 +275,7 @@ impl Auth {
                 limits.addresses,
             ),
             devices: Devices::load(state_dir)?,
+            handoffs: Handoffs::load(state_dir),
             pair_limit: RateLimiter::new(
                 limits.pair_burst,
                 limits.pair_refill_ms,
@@ -393,8 +397,43 @@ impl Auth {
         self.sessions.authenticate(bearer, now_ms)
     }
 
+    /// A token that moves `device`'s access into its Home Screen app.
+    pub(crate) fn handoff(&mut self, device: &DeviceId, now_ms: u64) -> Result<Handoff> {
+        if self.devices.get(device).is_none() {
+            return Err(Error::UnknownDevice);
+        }
+        self.handoffs.mint(device, now_ms)
+    }
+
+    /// The Home Screen app at `client` redeems a handoff with its own key:
+    /// the device keeps its ID and name, takes the new key, and the
+    /// browser's sessions end.
+    pub(crate) fn redeem(
+        &mut self,
+        client: IpAddr,
+        token: &str,
+        public_key: &str,
+        now_ms: u64,
+    ) -> Result<DeviceId> {
+        if !self.pair_limit.allow(client, now_ms) {
+            return Err(Error::RateLimited);
+        }
+        let public_key = PublicKey::parse(public_key)?;
+        let device = self
+            .handoffs
+            .redeem(token, now_ms)?
+            .ok_or(Error::InvalidToken)?;
+        self.devices.rekey(&device, public_key)?;
+        self.sessions.end_device(&device);
+        self.revoked();
+        Ok(device)
+    }
+
     /// Forgets a device and ends its sessions at once.
     pub(crate) fn revoke(&mut self, device: &DeviceId) -> Result<bool> {
+        // The device goes either way; a stale digest only names a device
+        // that no longer exists.
+        let _ = self.handoffs.forget(device);
         self.sessions.end_device(device);
         self.revoked();
         self.devices.revoke(device)

@@ -482,8 +482,8 @@ pub(super) const CATALOG: &[Entry] = &[
     ),
     entry(
         Section::RemoteControl,
-        "remote-pair",
-        "Pair a device",
+        "remote-pair-card",
+        "Pair a phone",
         "Show a QR code to scan with a phone, then approve it.",
     ),
     entry(

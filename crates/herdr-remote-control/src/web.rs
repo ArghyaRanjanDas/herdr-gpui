@@ -9,12 +9,14 @@
 mod api;
 mod assets;
 mod fragments;
+mod log;
 mod origins;
 mod render;
 mod stream;
 mod terminal;
 mod uploads;
 
+pub(crate) use log::report_limit;
 pub(crate) use origins::Origins;
 pub(crate) use render::now_ms;
 pub(crate) use uploads::Uploads;
@@ -60,6 +62,8 @@ pub(crate) struct State {
     pub(crate) port: u16,
     pub(crate) privacy: Privacy,
     pub(crate) push: Option<Sender>,
+    /// How often each address may write a phone's error to the log.
+    pub(crate) reports: Mutex<auth::RateLimiter<std::net::IpAddr>>,
     /// Origins served before, which an installed app may still send.
     pub(crate) seen: Mutex<Origins>,
     pub(crate) uploads: Uploads,
@@ -110,6 +114,8 @@ pub(crate) fn router(state: Shared) -> Router {
         .route("/term/{pane}", get(assets::shell))
         .route("/sw.js", get(assets::service_worker))
         .route("/manifest.webmanifest", get(assets::manifest))
+        .route("/apple-touch-icon.png", get(assets::touch_icon))
+        .route("/apple-touch-icon-precomposed.png", get(assets::touch_icon))
         .route("/assets/{file}", get(assets::asset))
         .route("/ca.pem", get(assets::ca_pem))
         .route("/ca.mobileconfig", get(assets::mobileconfig))
@@ -119,6 +125,12 @@ pub(crate) fn router(state: Shared) -> Router {
         .route("/api/session/challenge", post(api::challenge))
         .route("/api/origins", get(api::origins))
         .route("/api/session", post(api::session))
+        .route("/api/handoff", post(api::handoff))
+        .route("/api/handoff/redeem", post(api::redeem))
+        .route(
+            "/api/log",
+            post(log::report).layer(DefaultBodyLimit::max(4 * 1024)),
+        )
         .route("/api/chat/{pane}/command", post(api::command))
         .route(
             "/api/chat/{pane}/upload",
@@ -150,6 +162,8 @@ pub(crate) fn router(state: Shared) -> Router {
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .layer(middleware::from_fn_with_state(state.clone(), cors))
         .layer(middleware::from_fn(security_headers))
+        // Outermost, so refused origins are logged too.
+        .layer(middleware::from_fn(log::requests))
         .with_state(state)
 }
 

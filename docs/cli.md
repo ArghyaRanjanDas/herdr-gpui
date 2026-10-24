@@ -281,13 +281,14 @@ The change applies live; `config get focus_follows_mouse` reads it back.
 | `remote [status]` | Whether remote control is on and its daemon runs: its port, version, the addresses it serves, its certificate authority fingerprint, and paired and connected devices |
 | `remote devices` | The paired devices with their IDs, when each was last seen, and whether it gets notifications. Exits 4 when there are none |
 | `remote pair` | Open the pairing dialog in the window. The QR and its token show only there, and the user approves the phone there |
+| `remote restart` | Restart the daemon from the binary beside the app, as after a rebuild or update; phones reconnect on their own. Exits 6 while the service is already changing |
 | `remote revoke DEVICE` | Ask in the window to revoke a paired device, named by its ID from `remote devices` or its name (a name two devices share is refused); the user confirms there |
 
 Remote control is turned on in Settings > Remote control, or with
 `config set remote.enabled true`; the app then installs the `herdr-remote-control`
 daemon as a user service and keeps it in line with the `[remote]` settings.
-While it is off, `remote status` says so and exits 0; `pair`, `devices`, and
-`revoke` exit 1. A dialog already open in the window refuses `pair` and
+While it is off, `remote status` says so and exits 0; `pair`, `devices`,
+`revoke`, and `restart` exit 1. A dialog already open in the window refuses `pair` and
 `revoke` (exit 6). `--json` gives `{"enabled", "running", "status", "error"}`
 for `status`, where `status` is the daemon's own report, and
 `{"devices": [...]}` for `devices`.

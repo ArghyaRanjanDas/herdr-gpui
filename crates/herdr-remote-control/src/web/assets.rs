@@ -3,10 +3,13 @@
 
 use super::{ApiError, Shared};
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderValue, header},
     response::{IntoResponse, Response},
 };
+use base64::{Engine, engine::general_purpose::STANDARD};
+use serde::Deserialize;
+use std::sync::LazyLock;
 
 /// A compiled-in file: its name, MIME type, and bytes.
 struct Asset {
@@ -33,7 +36,8 @@ const ASSETS: &[Asset] = assets! {
     // keep-sorted end
 };
 
-const SHELL: &[u8] = include_bytes!("assets/shell.html");
+const SHELL: &str = include_str!("assets/shell.html");
+const TOUCH_ICON: &[u8] = include_bytes!("assets/icon-180.png");
 const SERVICE_WORKER: &[u8] = include_bytes!("assets/sw.js");
 const MANIFEST: &[u8] = include_bytes!("assets/manifest.webmanifest");
 
@@ -48,9 +52,55 @@ fn file(mime: &'static str, bytes: &'static [u8], cache: &'static str) -> Respon
         .into_response()
 }
 
-/// The shell for every route the app shows; it routes on the client.
-pub(super) async fn shell() -> Response {
-    file("text/html; charset=utf-8", SHELL, "no-cache")
+/// The shell with its Home Screen icon inline. iOS fetches a linked icon
+/// apart from the page and refuses a certificate the phone does not trust
+/// yet, even one accepted for the page, then draws a letter instead.
+static SHELL_PAGE: LazyLock<String> = LazyLock::new(|| {
+    let icon = format!("data:image/png;base64,{}", STANDARD.encode(TOUCH_ICON));
+    SHELL.replace("{{touch-icon}}", &icon)
+});
+
+/// A page's `?handoff=` token: a paired browser's offer to its Home
+/// Screen app, see `auth::handoff`.
+#[derive(Deserialize)]
+pub(super) struct HandoffQuery {
+    handoff: Option<String>,
+}
+
+impl HandoffQuery {
+    /// The token, when it has only a token's characters; anything else is
+    /// dropped rather than echoed.
+    fn token(self) -> Option<String> {
+        self.handoff.filter(|token| {
+            (1..=64).contains(&token.len())
+                && token
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        })
+    }
+}
+
+/// The shell for every route the app shows; it routes on the client. With
+/// a handoff token its manifest link carries it, so Safari reads, when the
+/// page loads, a manifest whose start address hands the pairing over.
+pub(super) async fn shell(Query(query): Query<HandoffQuery>) -> Response {
+    let manifest = match query.token() {
+        Some(token) => format!("/manifest.webmanifest?handoff={token}"),
+        None => "/manifest.webmanifest".to_owned(),
+    };
+    (
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-cache"),
+        ],
+        SHELL_PAGE.replace("{{manifest}}", &manifest),
+    )
+        .into_response()
+}
+
+/// The icon iOS asks for at the root when a page links none.
+pub(super) async fn touch_icon() -> Response {
+    file("image/png", TOUCH_ICON, "no-cache")
 }
 
 pub(super) async fn service_worker() -> Response {
@@ -61,8 +111,24 @@ pub(super) async fn service_worker() -> Response {
     response
 }
 
-pub(super) async fn manifest() -> Response {
-    file("application/manifest+json", MANIFEST, "no-cache")
+/// The manifest; with a handoff token, its start address carries it.
+pub(super) async fn manifest(Query(query): Query<HandoffQuery>) -> Response {
+    let Some(token) = query.token() else {
+        return file("application/manifest+json", MANIFEST, "no-cache");
+    };
+    let mut manifest: serde_json::Value = match serde_json::from_slice(MANIFEST) {
+        Ok(manifest) => manifest,
+        Err(_) => return file("application/manifest+json", MANIFEST, "no-cache"),
+    };
+    manifest["start_url"] = format!("/?handoff={token}").into();
+    (
+        [
+            (header::CONTENT_TYPE, "application/manifest+json"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
+        manifest.to_string(),
+    )
+        .into_response()
 }
 
 pub(super) async fn asset(Path(name): Path<String>) -> Result<Response, ApiError> {

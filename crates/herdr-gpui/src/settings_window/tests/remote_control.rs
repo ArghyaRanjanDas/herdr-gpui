@@ -273,3 +273,25 @@ fn a_device_line_says_when_it_was_seen() {
         "Last seen 2 days ago \u{b7} notifications on"
     );
 }
+
+static RESTARTED: AtomicUsize = AtomicUsize::new(0);
+
+#[gpui::test]
+fn restart_reloads_the_daemon_only_while_on(cx: &mut TestAppContext) {
+    let (view, cx, _) = page(cx);
+    cx.update(|_, cx| {
+        cx.global_mut::<Supervisor>().set_restart_for_tests(|_| {
+            RESTARTED.fetch_add(1, Ordering::SeqCst);
+            Ok(crate::remote::service::Outcome::Started)
+        });
+    });
+    click(cx, "remote-restart-button");
+    assert_eq!(RESTARTED.load(Ordering::SeqCst), 1);
+    view.update(cx, |view, cx| {
+        view.config.remote.enabled = false;
+        cx.notify();
+    });
+    draw(cx);
+    click(cx, "remote-restart-button");
+    assert_eq!(RESTARTED.load(Ordering::SeqCst), 1);
+}

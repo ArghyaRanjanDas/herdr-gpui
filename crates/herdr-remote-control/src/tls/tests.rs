@@ -13,6 +13,7 @@ use std::{
 };
 
 mod advertised;
+mod stored;
 
 const DAY: Duration = Duration::from_secs(24 * 60 * 60);
 

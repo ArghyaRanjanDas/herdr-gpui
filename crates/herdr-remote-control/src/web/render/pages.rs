@@ -1,7 +1,7 @@
 //! Forms and settings: a new workspace, a new chat in a workspace, and this
 //! phone's settings.
 
-use super::{display_folder, home::urlencode};
+use super::{display_folder, home::urlencode, icons};
 use crate::hub::Workspace;
 use herdr_chat_protocol::Agent;
 use maud::{Markup, html};
@@ -44,9 +44,9 @@ fn agents(selected: Agent) -> Markup {
 fn header(title: &str, submit: &str) -> Markup {
     html! {
         header class="flex items-center gap-2 px-4 pt-1.5 pb-2" {
-            a href="/" data-nav class="text-accent" { "Cancel" }
+            a href="/" data-nav class="pill-button" { "Cancel" }
             h1 class="flex-1 text-center text-[17px] font-bold" { (title) }
-            button type="submit" class="text-accent font-semibold" { (submit) }
+            button type="submit" class="pill-button primary" { (submit) }
         }
     }
 }
@@ -102,7 +102,7 @@ pub(crate) fn devices(computer: &str, origins: &[String], fingerprint: &str) -> 
     html! {
         div id="settings" class="px-4 pb-16" x-data="settings" {
             header class="flex items-center gap-2 pt-1.5 pb-2" {
-                a href="/" data-nav class="text-accent text-[28px] leading-none" aria-label="Back" { "‹" }
+                a href="/" data-nav class="grid place-items-center text-accent w-8 h-9 -ml-1.5 shrink-0" aria-label="Back" { (icons::chevron_left(28)) }
                 h1 class="text-[22px] font-bold" { "Settings" }
             }
             h2 class="section-title" { "Notifications" }
@@ -116,8 +116,8 @@ pub(crate) fn devices(computer: &str, origins: &[String], fingerprint: &str) -> 
             }
             h2 class="section-title" { (computer) }
             div class="group-list" {
-                @for origin in origins { div class="row text-sm font-mono" { (origin) } }
-                div class="row text-xs text-muted" { "Certificate " span class="font-mono" { (fingerprint) } }
+                @for origin in origins { div class="row text-sm font-mono" { span class="min-w-0 break-all" { (origin) } } }
+                div class="row items-start text-xs text-muted" { span class="shrink-0" { "Certificate" } span class="min-w-0 break-all font-mono" { (fingerprint) } }
                 a class="row text-accent" href="/ca.mobileconfig" { "Install the certificate (iPhone, iPad)" }
                 a class="row text-accent" href="/ca.pem" download="herdr-remote-ca.pem" { "Download the certificate (Android)" }
             }

@@ -1,4 +1,5 @@
-//! `remote status`, `remote devices`, `remote pair`, and `remote revoke`.
+//! `remote status`, `remote devices`, `remote pair`, `remote revoke`, and
+//! `remote restart`.
 //! The daemon is asked on the background executor. Pairing and revoking
 //! open the window's own dialogs, where the user approves a device or
 //! confirms the revoke; neither happens from here.
@@ -49,6 +50,9 @@ pub(super) fn serve(
     }
     if !enabled && op != RemoteOp::Status {
         return incoming.respond(Response::error(ErrorCode::Failed, OFF));
+    }
+    if op == RemoteOp::Restart {
+        return incoming.respond(restart(cx));
     }
     let Some(client) = Supervisor::client(cx) else {
         return incoming.respond(Response::error(
@@ -122,9 +126,28 @@ pub(super) fn serve(
                 })
             })
         }
-        RemoteOp::Pair => return,
+        RemoteOp::Pair | RemoteOp::Restart => return,
     };
     answer_when_done(task, wait, incoming, watches, cx);
+}
+
+/// Starts the restart; its outcome shows in Settings like any service
+/// change's.
+fn restart(cx: &mut App) -> Response {
+    if !cx.has_global::<Supervisor>() {
+        return Response::error(
+            ErrorCode::Unsupported,
+            "This Herdr UI does not run remote control",
+        );
+    }
+    if Supervisor::restart(cx) {
+        Response::done("Restarting the remote control daemon; phones reconnect on their own")
+    } else {
+        Response::error(
+            ErrorCode::WindowBusy,
+            "The remote control service is changing now; try again shortly",
+        )
+    }
 }
 
 fn devices(

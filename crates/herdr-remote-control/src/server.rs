@@ -104,6 +104,7 @@ pub async fn run(options: Options) -> Result<()> {
         port: options.port,
         privacy: options.privacy,
         push,
+        reports: Mutex::new(web::report_limit()),
         seen: Mutex::new(seen),
         uploads: web::Uploads::new(&options.state_dir),
     });
@@ -111,6 +112,11 @@ pub async fn run(options: Options) -> Result<()> {
     // The port first: a second daemon fails here before it touches the
     // first one's control socket.
     let tcp = listener::bind(options.bind, options.port)?;
+    tracing::info!(
+        version = env!("CARGO_PKG_VERSION"),
+        port = options.port,
+        "Remote control started"
+    );
     let (stop, stopped) = watch::channel(false);
     control::serve(&options.state_dir, state.clone(), stop.clone())?;
     // Only once this daemon owns the port and the control socket: a second

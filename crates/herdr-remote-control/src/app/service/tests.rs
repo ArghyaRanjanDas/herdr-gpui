@@ -480,3 +480,4 @@ fn a_failed_load_is_reported_with_its_cause() {
 }
 
 mod release;
+mod restart;

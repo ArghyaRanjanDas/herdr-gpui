@@ -1,5 +1,5 @@
-//! `remote`: the remote control daemon's status and devices, and the
-//! window's pairing and revoke dialogs.
+//! `remote`: the remote control daemon's status, devices, and restart, and
+//! the window's pairing and revoke dialogs.
 use super::{Context, Output, unexpected};
 use crate::{
     cli::control::RemoteCommand,
@@ -16,6 +16,7 @@ pub(super) fn remote(command: RemoteCommand, context: &Context) -> crate::Result
         RemoteCommand::Pair => RemoteOp::Pair,
         RemoteCommand::Devices => RemoteOp::Devices,
         RemoteCommand::Revoke { device } => RemoteOp::Revoke { device },
+        RemoteCommand::Restart => RemoteOp::Restart,
     };
     match context.call(Request::Remote, op)? {
         Response::Done { message } => Ok(Output::message(message)),

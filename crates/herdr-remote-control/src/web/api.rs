@@ -82,6 +82,43 @@ pub(super) async fn claim_status(
     }))
 }
 
+/// A token the paired browser puts in its Home Screen app's start address.
+pub(super) async fn handoff(
+    State(state): State<Shared>,
+    Device(device): Device,
+) -> Result<Json<Value>, ApiError> {
+    let handoff = with_auth(&state, move |auth| Ok(auth.handoff(&device, now_ms())?)).await?;
+    Ok(Json(json!({
+        "token": handoff.token,
+        "expires_ms": handoff.expires_ms,
+    })))
+}
+
+#[derive(Deserialize)]
+pub(super) struct RedeemRequest {
+    token: String,
+    public_key: String,
+}
+
+/// The Home Screen app takes over its browser's device with its own key;
+/// it answers as an approved claim does.
+pub(super) async fn redeem(
+    State(state): State<Shared>,
+    ConnectInfo(Peer(peer)): ConnectInfo<Peer>,
+    Json(request): Json<RedeemRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let device = with_auth(&state, move |auth| {
+        Ok(auth.redeem(peer.ip(), &request.token, &request.public_key, now_ms())?)
+    })
+    .await?;
+    Ok(Json(json!({
+        "device": device.0,
+        "origins": state.origins(),
+        "fingerprint": state.fingerprint,
+        "computer": state.computer,
+    })))
+}
+
 #[derive(Deserialize)]
 pub(super) struct ChallengeRequest {
     device: String,

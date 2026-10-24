@@ -113,3 +113,40 @@ async fn live_activity_tokens_need_a_session() {
     .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn home_and_the_board_open_under_the_search_field() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = state(dir.path());
+    let (_, token) = signed_in(&state, 7);
+    for path in ["/f/home", "/f/board"] {
+        let request = HttpRequest::get(path)
+            .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap();
+        let (status, _, body) = send(&state, request).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        let search = body.find(r#"id="search""#).unwrap();
+        let lists = body.find(r#"id="lists""#).unwrap();
+        assert!(search < lists, "{path}");
+        assert!(lists < body.find(r#"id="no-match""#).unwrap(), "{path}");
+    }
+}
+
+#[tokio::test]
+async fn the_home_screen_icon_needs_no_second_fetch() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = state(dir.path());
+    let (_, _, body) = send(&state, get("/")).await;
+    assert!(
+        body.contains(r#"<link rel="apple-touch-icon" href="data:image/png;base64,iVBOR"#),
+        "{}",
+        &body[..body.len().min(2000)]
+    );
+    assert!(!body.contains("{{"), "a placeholder was left in the shell");
+    for path in ["/apple-touch-icon.png", "/apple-touch-icon-precomposed.png"] {
+        let (status, headers, _) = send(&state, get(path)).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert_eq!(headers[header::CONTENT_TYPE], "image/png", "{path}");
+    }
+}

@@ -35,6 +35,10 @@ fn remote_pairs_lists_and_revokes() {
         );
     }
     assert_eq!(
+        command(&["remote", "restart"]),
+        ControlCommand::Remote(RemoteCommand::Restart)
+    );
+    assert_eq!(
         command(&["remote", "revoke", "d1"]),
         ControlCommand::Remote(RemoteCommand::Revoke {
             device: "d1".into()
@@ -57,6 +61,7 @@ fn remote_refuses_what_it_does_not_do() {
     // Approving stays in the dialog: there is no command for it.
     assert!(parse(&["remote", "approve", "p1"]).is_err());
     assert!(parse(&["remote", "pair", "extra"]).is_err());
+    assert!(parse(&["remote", "restart", "now"]).is_err());
     assert!(parse(&["remote", "status", "now"]).is_err());
     assert!(matches!(
         command(&["remote", "--help"]),

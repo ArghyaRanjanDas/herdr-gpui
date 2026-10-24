@@ -9,7 +9,7 @@ use axum::{
     extract::{Path, Query, State},
     response::Html,
 };
-use maud::Markup;
+use maud::{Markup, html};
 use serde::Deserialize;
 use std::{collections::HashMap, path::Path as FsPath};
 
@@ -51,11 +51,17 @@ pub(super) fn lists(state: &Shared, board: bool) -> (Markup, usize) {
 }
 
 pub(super) async fn home(State(state): State<Shared>, _device: Device) -> Html<String> {
-    Html(lists(&state, false).0.into_string())
+    searchable(lists(&state, false).0)
 }
 
 pub(super) async fn board(State(state): State<Shared>, _device: Device) -> Html<String> {
-    Html(lists(&state, true).0.into_string())
+    searchable(lists(&state, true).0)
+}
+
+/// Lists between the search field and its empty result; the stream
+/// replaces only the lists.
+fn searchable(lists: Markup) -> Html<String> {
+    Html(html! { (render::search()) (lists) (render::no_match()) }.into_string())
 }
 
 pub(super) async fn chat(

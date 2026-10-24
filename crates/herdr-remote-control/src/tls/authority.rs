@@ -4,6 +4,7 @@
 use super::{
     Error, Names, Result,
     names::{self, LOCAL_DOMAINS, PRIVATE_NETWORKS},
+    stored::{self, Stored},
 };
 use rcgen::{
     BasicConstraints, CertificateParams, CidrSubnet, DistinguishedName, DnType,
@@ -42,6 +43,8 @@ const LEAF_COMMON_NAME: &str = "Herdr Remote";
 pub(crate) struct Authority {
     ca_der: CertificateDer<'static>,
     ca_pem: String,
+    /// Where the issued leaf is kept; none for a CA only held in memory.
+    dir: Option<PathBuf>,
     fingerprint: String,
     issuer: Issuer<'static, KeyPair>,
 }
@@ -59,14 +62,21 @@ impl Authority {
         if let (Some(key_pem), Some(cert_pem)) =
             (read_optional(&key_path)?, read_optional(&cert_path)?)
         {
-            return Self::from_pem(&key_pem, &key_path, cert_pem, &cert_path);
+            let authority = Self::from_pem(&key_pem, &key_path, cert_pem, &cert_path)?;
+            return Ok(Self {
+                dir: Some(dir),
+                ..authority
+            });
         }
         let host = names::host_name();
         let (authority, key_pem) = Self::create(host.as_deref(), SystemTime::now())?;
         // The key first: a CA certificate without its key is never loaded.
         write_private(&key_path, key_pem.as_bytes())?;
         write_private(&cert_path, authority.ca_pem.as_bytes())?;
-        Ok(authority)
+        Ok(Self {
+            dir: Some(dir),
+            ..authority
+        })
     }
 
     /// A new CA for `host`, valid from `now`, with its key as PEM.
@@ -91,6 +101,7 @@ impl Authority {
             ca_pem: certificate.pem(),
             fingerprint: fingerprint(&ca_der),
             ca_der,
+            dir: None,
             issuer: Issuer::new(params, key),
         };
         Ok((authority, key_pem))
@@ -115,6 +126,7 @@ impl Authority {
             ca_pem,
             fingerprint: fingerprint(&ca_der),
             ca_der,
+            dir: None,
             issuer,
         })
     }
@@ -130,20 +142,26 @@ impl Authority {
         &self.ca_pem
     }
 
-    /// The iOS configuration profile that installs this CA.
     /// The CA certificate as DER.
     #[cfg(test)]
     pub(crate) fn ca_der(&self) -> &[u8] {
         &self.ca_der
     }
 
+    /// The leaf this CA issued and saved before, if it is still there.
+    /// Blocking.
+    pub(super) fn stored(&self) -> Option<Stored> {
+        stored::load(self.dir.as_deref()?, &self.ca_der)
+    }
+
+    /// The iOS configuration profile that installs this CA.
     pub(crate) fn mobileconfig(&self) -> Vec<u8> {
         super::profile::mobileconfig(&self.ca_der, &self.fingerprint)
     }
 
     /// A new server certificate for `names`, valid from `now` for
     /// [`LEAF_LIFETIME`], with a fresh P-256 key. Its chain is the leaf then
-    /// this CA.
+    /// this CA. A CA kept on disk saves it there too, for the next start.
     pub(crate) fn issue(&self, names: &Names, now: SystemTime) -> Result<Arc<CertifiedKey>> {
         let key = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256).map_err(Error::Certificate)?;
         let mut params = CertificateParams::default();
@@ -164,6 +182,13 @@ impl Authority {
         let leaf = params
             .signed_by(&key, &self.issuer)
             .map_err(Error::Certificate)?;
+        if let Some(dir) = &self.dir
+            && let Err(error) = stored::save(dir, &leaf.pem(), &key.serialize_pem())
+        {
+            // Only costs phones that skipped installing the CA a prompt
+            // after the next restart.
+            tracing::warn!(error = %error, "Could not save the server certificate");
+        }
         let key_der = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key.serialize_der()));
         let signing_key = ring::default_provider()
             .key_provider
@@ -248,7 +273,7 @@ fn create_private_dir(dir: &Path) -> Result<()> {
 
 /// Writes `contents` to `path` through a temporary sibling, readable only
 /// by this user on Unix, so a crash never leaves a half-written file.
-fn write_private(path: &Path, contents: &[u8]) -> Result<()> {
+pub(super) fn write_private(path: &Path, contents: &[u8]) -> Result<()> {
     let temporary = temporary_path(path);
     let error = |path: &Path| {
         let path = path.to_owned();

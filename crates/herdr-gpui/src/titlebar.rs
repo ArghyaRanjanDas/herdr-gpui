@@ -309,6 +309,7 @@ impl HerdrWindow {
             .flex_none()
             .items_center()
             .children(self.render_git_button(cx))
+            .children(self.remote_indicator(cx))
             .child(
                 div()
                     .debug_selector(|| "titlebar-account-slot".into())

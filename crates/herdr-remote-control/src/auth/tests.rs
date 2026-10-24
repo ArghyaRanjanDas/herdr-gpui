@@ -2,6 +2,7 @@ use super::*;
 use p256::ecdsa::{Signature, SigningKey, signature::Signer};
 
 mod devices;
+mod handoff;
 mod inputs;
 mod limits;
 mod pairing;

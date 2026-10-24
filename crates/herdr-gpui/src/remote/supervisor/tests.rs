@@ -108,31 +108,28 @@ fn connected_daemon(_: &Path, request: &Request) -> Result<Response, control::Er
 }
 
 #[gpui::test]
-fn the_status_bar_alone_asks_for_status_and_a_lease_for_devices(cx: &mut TestAppContext) {
+fn every_poll_lists_devices_and_a_lease_polls_sooner(cx: &mut TestAppContext) {
     cx.update(|cx| Supervisor::fixture(cx, on(), connected_daemon));
     cx.update(Supervisor::tick);
     cx.run_until_parked();
     cx.update(|cx| {
         assert_eq!(Supervisor::connected(cx), 2);
-        assert!(
-            Supervisor::devices(cx).is_none(),
-            "nobody asked for devices"
-        );
+        // The title bar shows whether any phone is paired.
+        assert_eq!(Supervisor::devices(cx).map(<[Device]>::len), Some(2));
     });
     assert_eq!(ASKED.load(Ordering::SeqCst), 1);
-    assert_eq!(LISTED.load(Ordering::SeqCst), 0);
+    assert_eq!(LISTED.load(Ordering::SeqCst), 1);
     // Not due again for a while without a lease.
     cx.update(Supervisor::tick);
     cx.run_until_parked();
     assert_eq!(ASKED.load(Ordering::SeqCst), 1);
-    // A lease asks at once, devices included.
+    // A lease asks at once.
     let lease = cx.update(Supervisor::lease);
     assert!(lease.is_some());
     cx.update(Supervisor::tick);
     cx.run_until_parked();
     assert_eq!(ASKED.load(Ordering::SeqCst), 2);
-    assert_eq!(LISTED.load(Ordering::SeqCst), 1);
-    cx.update(|cx| assert_eq!(Supervisor::devices(cx).map(<[Device]>::len), Some(2)));
+    assert_eq!(LISTED.load(Ordering::SeqCst), 2);
 }
 
 static OFF_ASKED: AtomicUsize = AtomicUsize::new(0);
@@ -213,3 +210,5 @@ fn a_failed_change_waits_for_retry(cx: &mut TestAppContext) {
     cx.run_until_parked();
     cx.update(|cx| assert!(Supervisor::failure(cx).is_none()));
 }
+
+mod restart;

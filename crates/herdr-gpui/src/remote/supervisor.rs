@@ -28,6 +28,8 @@ const UNWATCHED: Duration = Duration::from_secs(15);
 pub(crate) type Send = fn(&Path, &Request) -> Result<Response, control::Error>;
 /// Brings the service in line with a config. Blocking.
 type Reconcile = fn(&RemoteConfig, Send) -> crate::Result<Outcome>;
+/// Restarts the service from the binary beside the app. Blocking.
+type Restart = fn(&RemoteConfig) -> crate::Result<Outcome>;
 
 /// What the daemon last said about itself.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -92,6 +94,7 @@ pub(crate) struct Supervisor {
     quitting: bool,
     reconcile: Reconcile,
     reconciling: bool,
+    restart: Restart,
     send: Send,
     /// The settings the service was last brought in line with.
     synced: Option<RemoteConfig>,
@@ -115,6 +118,7 @@ impl Default for Supervisor {
             quitting: false,
             reconcile: reconcile_host,
             reconciling: false,
+            restart: restart_host,
             send: control::request,
             synced: None,
             watchers: Rc::default(),
@@ -137,6 +141,12 @@ fn reconcile_host(config: &RemoteConfig, send: Send) -> crate::Result<Outcome> {
         service::run,
     )
     .map_err(Into::into)
+}
+
+/// The real restart: this user's host.
+fn restart_host(config: &RemoteConfig) -> crate::Result<Outcome> {
+    let host = super::host(super::state_dir()?)?;
+    service::restart(config, &host, service::run).map_err(Into::into)
 }
 
 impl Supervisor {
@@ -242,10 +252,8 @@ impl Supervisor {
         let send = supervisor.send;
         let task = executor.spawn(async move {
             let status = send(&address, &Request::Status);
-            let devices = match (&status, watched) {
-                (Ok(_), true) => Some(send(&address, &Request::Devices)),
-                _ => None,
-            };
+            // Every poll: the title bar shows whether any phone is paired.
+            let devices = status.is_ok().then(|| send(&address, &Request::Devices));
             (status, devices)
         });
         cx.spawn(async move |cx| {
@@ -362,6 +370,32 @@ impl Supervisor {
         Self::tick(cx);
     }
 
+    /// Restarts the daemon from the binary beside the app, as after a
+    /// rebuild or update. Returns false when it is off or already changing.
+    pub(crate) fn restart(cx: &mut App) -> bool {
+        let Some(supervisor) = cx.try_global::<Self>() else {
+            return false;
+        };
+        if supervisor.quitting || supervisor.reconciling || !supervisor.config.enabled {
+            return false;
+        }
+        let (config, restart) = (supervisor.config.clone(), supervisor.restart);
+        cx.global_mut::<Self>().reconciling = true;
+        let task = cx
+            .background_executor()
+            .spawn(async move { (restart(&config), config) });
+        cx.spawn(async move |cx| {
+            let (result, config) = task.await;
+            cx.update(|cx| {
+                cx.global_mut::<Self>().reconciled(config, result);
+                cx.refresh_windows();
+            });
+        })
+        .detach();
+        cx.refresh_windows();
+        true
+    }
+
     pub(crate) fn client(cx: &App) -> Option<Client> {
         let supervisor = cx.try_global::<Self>()?;
         Some(Client {
@@ -402,9 +436,16 @@ impl Supervisor {
             config,
             loaded: true,
             reconcile: |_, _| Ok(Outcome::Unchanged),
+            restart: |_| Ok(Outcome::Started),
             send,
             ..Self::default()
         });
+    }
+
+    /// Replaces the restart, as tests outside this module do.
+    #[cfg(test)]
+    pub(crate) fn set_restart_for_tests(&mut self, restart: Restart) {
+        self.restart = restart;
     }
 
     /// Takes a status and device list as a poll would have.

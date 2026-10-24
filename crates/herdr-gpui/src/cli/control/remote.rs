@@ -12,6 +12,8 @@ pub enum RemoteCommand {
     Revoke {
         device: String,
     },
+    /// Restart the daemon from the binary beside the app.
+    Restart,
 }
 
 pub(super) fn remote(args: &mut Args) -> Result<RemoteCommand, CliError> {
@@ -22,6 +24,7 @@ pub(super) fn remote(args: &mut Args) -> Result<RemoteCommand, CliError> {
         Some("status") => RemoteCommand::Status,
         Some("pair") => RemoteCommand::Pair,
         Some("devices" | "list") => RemoteCommand::Devices,
+        Some("restart") => RemoteCommand::Restart,
         // A name may be typed unquoted, as `remote revoke Fabien's iPhone`.
         Some("revoke") => RemoteCommand::Revoke {
             device: args.words()?.ok_or(CliError::MissingArgument {

@@ -9,6 +9,9 @@ const DEVICE = "herdr.device"; // { id, origins, fingerprint, computer }
 const MAX_ORIGINS = 16;
 const TOKEN = "herdr.session"; // { token, expires, origin }
 const SIGN_PREFIX = "herdr-remote-session\0";
+const INSTALL_CLOSED = "herdr.install-closed"; // true once the footer is closed
+const HANDOFF = "herdr.handoff"; // { token, expires_ms } a tab offers its Home Screen app
+const RELOADED = "herdr.pair-reloaded"; // set once a failed pairing reloaded without the cache
 
 const app = {
   device: readJson(localStorage, DEVICE),
@@ -18,6 +21,8 @@ const app = {
   // The navigation in progress; a newer one aborts it.
   routing: null,
   retry: 0,
+  // Android's install prompt, kept until the footer's Install uses it.
+  install: null,
 };
 
 function readJson(storage, key) {
@@ -113,6 +118,22 @@ async function api(path, options = {}) {
     return call(path, options);
   }
 }
+
+/// Writes an error this screen hit to the computer's log (`daemon.log`),
+/// where it can be read; best effort, and never about chat content.
+function report(context, error) {
+  const where = `${installed() ? "Home Screen app" : "browser"} at ${location.pathname}`;
+  const message = `${error?.name || "Error"}: ${error?.message || error} (${where})`;
+  fetch(`${app.origin || ""}/api/log`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ context, message }),
+    keepalive: true,
+  }).catch(() => {});
+}
+
+window.addEventListener("error", (event) => report("script", event.error || event.message));
+window.addEventListener("unhandledrejection", (event) => report("script", event.reason));
 
 /// The first of the computer's addresses that answers, this page's first.
 async function reach() {
@@ -224,8 +245,11 @@ async function route() {
     const html = await (await api(target.fragment, { signal: routing.signal })).text();
     if (app.routing !== routing) return;
     view().innerHTML = html;
+    applySearch();
     window.scrollTo(0, location.pathname.startsWith("/chat/") ? document.body.scrollHeight : 0);
     fitTerminal();
+    showInstallHint();
+    offerHandoff();
     if (target.stream) startStream(target.stream);
   } catch (error) {
     if (app.routing !== routing || routing.signal.aborted) return;
@@ -303,7 +327,110 @@ function handleEvent(block) {
     if (atBottom && id === "chat-turn") window.scrollTo(0, document.body.scrollHeight);
     if (id === "term-screen") fitTerminal();
   }
+  applySearch();
 }
+
+/// Hides the rows of home or the board that lack a searched word, and
+/// the groups left empty. Runs again after each update, which replaces the
+/// lists but not the search field.
+function applySearch() {
+  const input = document.getElementById("search");
+  if (!input) return;
+  const words = input.value.toLowerCase().split(/\s+/).filter(Boolean);
+  // A folded workspace opens while searching, so its matches show.
+  view().classList.toggle("searching", words.length > 0);
+  let shown = 0;
+  for (const row of view().querySelectorAll("[data-find]")) {
+    const text = row.dataset.find.toLowerCase();
+    row.hidden = !words.every((word) => text.includes(word));
+    if (!row.hidden) shown += 1;
+  }
+  for (const group of view().querySelectorAll("[data-group]")) {
+    group.hidden = words.length > 0 && !group.querySelector("[data-find]:not([hidden])");
+  }
+  for (const strip of view().querySelectorAll("[data-strip]")) strip.hidden = words.length > 0;
+  const none = document.getElementById("no-match");
+  if (none) none.hidden = words.length === 0 || shown > 0;
+}
+
+/// The Add to Home Screen footer, on home and the board of a browser tab
+/// until it is closed: notifications on iPhone need the installed app.
+/// Whether this page runs as the Home Screen app rather than a browser tab.
+function installed() {
+  return matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+}
+
+function showInstallHint() {
+  const hint = document.getElementById("install-hint");
+  if (!hint) return;
+  const apple = /iPhone|iPad/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+  const lists = location.pathname === "/" || location.pathname === "/board";
+  hint.hidden = installed() || !lists || !app.device || readJson(localStorage, INSTALL_CLOSED) === true || !(apple || app.install);
+  hint.querySelector("[data-install]").hidden = !app.install;
+  hint.querySelector("[data-install-how]").hidden = Boolean(app.install);
+}
+
+/// Lets the Home Screen app take over this tab's pairing, as iOS gives it
+/// storage of its own. Its start address carries a single-use token as
+/// `?handoff=`: Safari reads the manifest when the page loads, so the page
+/// reloads once with the token, which the daemon then puts in the manifest
+/// link too. One token serves until it nears expiry, so an icon already
+/// added keeps a valid one.
+async function offerHandoff() {
+  if (installed() || !app.device) return;
+  if (location.pathname !== "/" && location.pathname !== "/board") return;
+  let offer = readJson(localStorage, HANDOFF);
+  if (!offer?.token || offer.expires_ms - Date.now() < 3_600_000) {
+    try {
+      offer = await (await api("/api/handoff", { method: "POST" })).json();
+    } catch {
+      return;
+    }
+    writeJson(localStorage, HANDOFF, offer);
+  }
+  const address = `${location.pathname}?handoff=${encodeURIComponent(offer.token)}`;
+  const link = document.querySelector('link[rel="manifest"]');
+  const loaded = link && new URL(link.href).searchParams.get("handoff");
+  if (loaded === offer.token) {
+    history.replaceState(history.state, "", address);
+  } else if (new URLSearchParams(location.search).get("handoff") !== offer.token) {
+    location.replace(address);
+  }
+}
+
+/// The Home Screen app's first launch: takes over the browser's pairing
+/// with a key of its own, asking nothing.
+async function redeemHandoff(token) {
+  show("t-loading");
+  history.replaceState(null, "", "/");
+  try {
+    const pairKey = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+    const publicKey = await crypto.subtle.exportKey("raw", pairKey.publicKey);
+    const answer = await (
+      await call("/api/handoff/redeem", { method: "POST", auth: false, body: { token, public_key: b64url(publicKey) } })
+    ).json();
+    await adopt(pairKey, answer);
+    return start();
+  } catch (failure) {
+    report("handoff", failure);
+    show("t-unpaired");
+    view().querySelector("[data-reason]").textContent =
+      `${failure.message}. Open Herdr in the browser, then add it to the Home Screen again.`;
+  }
+}
+
+/// Keeps the key and device an approval or a handoff granted.
+async function adopt(pairKey, answer) {
+  await saveKey(pairKey);
+  app.device = { id: answer.device, origins: answer.origins, fingerprint: answer.fingerprint, computer: answer.computer };
+  writeJson(localStorage, DEVICE, app.device);
+}
+
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  app.install = event;
+  showInstallHint();
+});
 
 // ---- commands and forms ----
 
@@ -319,7 +446,17 @@ async function command(pane, body) {
   return false;
 }
 
-document.addEventListener("click", (event) => {
+document.addEventListener("click", async (event) => {
+  if (event.target.closest("[data-install-close]")) {
+    writeJson(localStorage, INSTALL_CLOSED, true);
+    return showInstallHint();
+  }
+  if (event.target.closest("[data-install]") && app.install) {
+    const prompt = app.install;
+    app.install = null;
+    await prompt.prompt();
+    return showInstallHint();
+  }
   const link = event.target.closest("a[data-nav]");
   if (link && link.origin === location.origin) {
     event.preventDefault();
@@ -353,10 +490,6 @@ document.addEventListener("change", (event) => {
 
 document.addEventListener("submit", async (event) => {
   const form = event.target;
-  if (form.matches("[data-pair]")) {
-    event.preventDefault();
-    return pair(form);
-  }
   if (!form.dataset.form) return;
   event.preventDefault();
   const body = Object.fromEntries(new FormData(form).entries());
@@ -520,6 +653,10 @@ document.addEventListener("pointerdown", (event) => {
   if (event.target.closest(".tkey")) event.preventDefault();
 });
 
+document.addEventListener("input", (event) => {
+  if (event.target.id === "search") applySearch();
+});
+
 document.addEventListener("beforeinput", (event) => {
   if (event.target.id !== "term-input") return;
   switch (event.inputType) {
@@ -580,9 +717,22 @@ document.addEventListener("keydown", (event) => {
 
 // ---- pairing ----
 
-async function pair(form) {
+/// What the computer calls this phone, from what the browser says it is.
+/// Pairing asks nothing: the code the desktop confirms tells phones apart.
+function deviceName() {
+  const agent = navigator.userAgent;
+  if (/iPad/.test(agent) || (/Macintosh/.test(agent) && navigator.maxTouchPoints > 1)) return "iPad";
+  if (/iPhone/.test(agent)) return "iPhone";
+  if (/Android/.test(agent)) return /Mobile/.test(agent) ? "Android phone" : "Android tablet";
+  return "Browser";
+}
+
+/// Claims the scanned code at once and waits for the desktop's approval.
+async function pair() {
   const params = new URLSearchParams(location.hash.slice(1));
-  const error = form.querySelector("[data-error]");
+  show("t-approve");
+  const state = view().querySelector("[data-state]");
+  showTrust(params.get("fp") || "");
   try {
     const pairKey = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
     const publicKey = await crypto.subtle.exportKey("raw", pairKey.publicKey);
@@ -590,33 +740,66 @@ async function pair(form) {
       await call("/api/pair/claim", {
         method: "POST",
         auth: false,
-        body: { token: params.get("t"), name: form.elements.name.value.trim(), public_key: b64url(publicKey) },
+        body: { token: params.get("t"), name: deviceName(), public_key: b64url(publicKey) },
       })
     ).json();
-    show("t-approve");
     view().querySelector("[data-code]").textContent = claim.code.replace(/(\d{3})(\d{3})/, "$1 $2");
+    state.textContent = "Waiting for approval…";
     for (;;) {
       await new Promise((resolve) => setTimeout(resolve, 1500));
-      const state = await (await call(`/api/pair/claim/${claim.claim}`, { auth: false })).json();
-      if (state.state === "approved") {
-        await saveKey(pairKey);
-        app.device = { id: state.device, origins: state.origins, fingerprint: state.fingerprint, computer: state.computer };
-        writeJson(localStorage, DEVICE, app.device);
+      const answer = await (await call(`/api/pair/claim/${claim.claim}`, { auth: false })).json();
+      if (answer.state === "approved") {
+        await adopt(pairKey, answer);
+        // Straight home: its footer offers Add to Home Screen.
         history.replaceState(null, "", "/");
-        if (!matchMedia("(display-mode: standalone)").matches && /iPhone|iPad/.test(navigator.userAgent)) {
-          return show("t-install");
-        }
         return start();
       }
-      if (state.state !== "claimed") {
-        view().querySelector("[data-state]").textContent =
-          state.state === "denied" ? "Your computer declined. Scan a new code to try again." : "The code expired. Scan a new one.";
+      if (answer.state !== "claimed") {
+        state.textContent =
+          answer.state === "denied" ? "Your computer declined. Scan a new code to try again." : "The code expired. Scan a new one.";
         return;
       }
     }
   } catch (failure) {
-    error.textContent = failure.message;
+    report("pair", failure);
+    // A network failure here is almost always a certificate this phone no
+    // longer trusts. Drop the cached app and load the page itself once, so
+    // Safari shows its warning instead.
+    if (failure instanceof TypeError && !sessionStorage.getItem(RELOADED)) {
+      sessionStorage.setItem(RELOADED, "1");
+      await dropCachedApp();
+      return location.reload();
+    }
+    state.textContent =
+      failure instanceof TypeError
+        ? "This phone cannot make a secure connection to your computer. Install its certificate below, then scan a new code."
+        : `${failure.message} Scan a new code to try again.`;
+    if (failure instanceof TypeError) view().querySelector("[data-trust]")?.removeAttribute("hidden");
   }
+}
+
+/// Unregisters the service worker and deletes its cached files.
+async function dropCachedApp() {
+  try {
+    const registrations = (await navigator.serviceWorker?.getRegistrations()) || [];
+    await Promise.all(registrations.map((registration) => registration.unregister()));
+    await Promise.all((await caches.keys()).map((key) => caches.delete(key)));
+  } catch {
+    // Best effort: the reload still tries the network first.
+  }
+}
+
+/// Shows how to trust the computer's certificate only when this browser
+/// does not yet: pairing works without it, but the installed app and its
+/// notifications need it.
+async function showTrust(fingerprint) {
+  const trusted = await navigator.serviceWorker
+    ?.register("/sw.js", { scope: "/" })
+    .then(() => true, () => false);
+  const box = view().querySelector("[data-trust]");
+  if (trusted || !box) return;
+  box.querySelector("[data-fingerprint]").textContent = fingerprint.replace(/(.{2})(?=.)/g, "$1:");
+  box.hidden = false;
 }
 
 async function forget() {
@@ -629,6 +812,7 @@ async function forget() {
   app.device = null;
   app.session = null;
   writeJson(localStorage, DEVICE, null);
+  writeJson(localStorage, HANDOFF, null);
   writeJson(sessionStorage, TOKEN, null);
   show("t-unpaired");
 }
@@ -811,13 +995,16 @@ document.addEventListener("alpine:init", () => {
 // ---- start ----
 
 async function start() {
-  if (location.pathname === "/pair" && location.hash.includes("t=")) {
-    show("t-pair");
-    const fingerprint = new URLSearchParams(location.hash.slice(1)).get("fp") || "";
-    view().querySelector("[data-fingerprint]").textContent = fingerprint.replace(/(.{2})(?=.)/g, "$1:");
-    return;
+  if (location.pathname === "/pair" && location.hash.includes("t=")) return pair();
+  // Every launch of the Home Screen app opens its start address; only the
+  // first, before it holds a device, redeems the token there.
+  const handoff = new URLSearchParams(location.search).get("handoff");
+  if (handoff && !app.device) return redeemHandoff(handoff);
+  if (handoff && installed()) history.replaceState(null, "", location.pathname);
+  if (!app.device) {
+    if (installed()) report("start", "this app holds no pairing and opened without a handoff");
+    return show("t-unpaired");
   }
-  if (!app.device) return show("t-unpaired");
   show("t-loading");
   try {
     app.origin = await reach();
@@ -825,6 +1012,7 @@ async function start() {
     route();
     refreshOrigins();
   } catch (error) {
+    report("start", error);
     if (error.status === 403 || error.status === 404) return forget();
     show("t-offline");
   }

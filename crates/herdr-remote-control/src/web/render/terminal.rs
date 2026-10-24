@@ -2,7 +2,7 @@
 //! `terminal.html`: two fixed key rows, an action sheet, text fitted to the
 //! width). The screen region is the only one the stream replaces.
 
-use super::{ansi::Screen, home::urlencode};
+use super::{ansi::Screen, home::urlencode, icons};
 use crate::hub::{Terminal, TerminalPane, Workspace};
 use maud::{Markup, html};
 
@@ -28,11 +28,14 @@ const BOTTOM_ROW: &[(&str, &str)] = &[
 const ARROWS: &[(&str, &str)] = &[("left", "←"), ("up", "↑"), ("down", "↓"), ("right", "→")];
 
 /// The actions the sheet offers on the pane and its tab.
-const PANE_ACTIONS: &[(&str, &str, &str)] = &[
-    ("split_right", "◫", "Split right"),
-    ("split_down", "⊟", "Split down"),
-    ("zoom", "⤢", "Zoom"),
-    ("close_pane", "✕", "Close"),
+/// A sheet tile: the action it sends, its icon, and its label.
+type PaneAction = (&'static str, fn(u16) -> Markup, &'static str);
+
+const PANE_ACTIONS: &[PaneAction] = &[
+    ("split_right", icons::split_right, "Split right"),
+    ("split_down", icons::split_down, "Split down"),
+    ("zoom", icons::zoom, "Zoom"),
+    ("close_pane", icons::close, "Close"),
 ];
 
 /// The whole terminal fragment for `pane` in `terminal`.
@@ -55,7 +58,7 @@ pub(crate) fn terminal(
     html! {
         div id="term" class="term-page" data-pane=(pane.pane) data-tab=(terminal.tab) x-data="terminal" {
             header class="flex items-center gap-2 px-3 pt-1.5 pb-1.5 border-b border-line bg-bg" {
-                a href="/" data-nav class="text-accent text-[28px] leading-none px-1" aria-label="Back" { "‹" }
+                a href="/" data-nav class="grid place-items-center text-accent w-8 h-9 -ml-1.5 shrink-0" aria-label="Back" { (icons::chevron_left(28)) }
                 span class="flex flex-col min-w-0 flex-1" {
                     b class="truncate" { (title(terminal, pane)) }
                     small class="text-muted truncate" {
@@ -122,14 +125,14 @@ pub(crate) fn terminal(
                         button type="button"
                             class={ "tile" @if *action == "close_pane" { " danger" } }
                             data-term-action=(action) {
-                            i { (icon) } (label)
+                            (icon(26)) span { (label) }
                         }
                     }
                 }
                 div class="tsheet-list" {
-                    button type="button" data-term-action="new_tab" { span { "New tab" } span class="text-muted" { "＋" } }
-                    a href={ "/new-chat?workspace=" (urlencode(&workspace.id)) } data-nav { span { "New chat in this workspace" } span class="text-muted" { "✳" } }
-                    button type="button" class="text-red" data-term-action="close_tab" { span { "Close tab" } span { "✕" } }
+                    button type="button" data-term-action="new_tab" { span { "New tab" } span class="text-muted" { (icons::plus(22)) } }
+                    a href={ "/new-chat?workspace=" (urlencode(&workspace.id)) } data-nav { span { "New chat in this workspace" } span class="text-muted" { (icons::chat(22)) } }
+                    button type="button" class="text-red" data-term-action="close_tab" { span { "Close tab" } span { (icons::close(22)) } }
                 }
             }
         }

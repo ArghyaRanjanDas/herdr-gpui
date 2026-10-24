@@ -69,13 +69,24 @@ impl TlsListener {
                 tokio::spawn(async move {
                     let handshake =
                         tokio::time::timeout(HANDSHAKE_TIMEOUT, acceptor.accept(tcp)).await;
-                    if let Ok(Ok(stream)) = handshake {
-                        let connection = Connection {
-                            stream,
-                            _permit: permit,
-                        };
-                        let _ = sender.send((connection, peer)).await;
-                    }
+                    // A phone that does not trust the certificate shows up
+                    // here, not as a request: say so in the log.
+                    let stream = match handshake {
+                        Ok(Ok(stream)) => stream,
+                        Ok(Err(error)) => {
+                            tracing::warn!(%peer, %error, "TLS handshake failed");
+                            return;
+                        }
+                        Err(_) => {
+                            tracing::warn!(%peer, "TLS handshake timed out");
+                            return;
+                        }
+                    };
+                    let connection = Connection {
+                        stream,
+                        _permit: permit,
+                    };
+                    let _ = sender.send((connection, peer)).await;
                 });
             }
         });
