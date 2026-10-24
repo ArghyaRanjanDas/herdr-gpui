@@ -17,7 +17,7 @@ use std::{cell::RefCell, ops::Range, rc::Rc};
 const MAX_BODY: usize = 64 * 1024;
 const MAX_LINES: usize = 400;
 const MAX_LINE: usize = 2000;
-const MAX_URL: usize = 1024;
+pub(crate) const MAX_URL: usize = 1024;
 /// List nesting levels drawn; deeper items line up with the last.
 const MAX_INDENT: usize = 4;
 
@@ -383,7 +383,7 @@ fn markdown_link(text: &str) -> Option<(&str, &str, usize)> {
 }
 
 /// A bare URL at the start of `text`, without trailing sentence punctuation.
-fn bare_url(text: &str) -> Option<&str> {
+pub(crate) fn bare_url(text: &str) -> Option<&str> {
     if !(text.starts_with("https://") || text.starts_with("http://")) {
         return None;
     }
@@ -423,20 +423,33 @@ pub(crate) fn line(
     mono: &FontConfig,
 ) -> Div {
     let accent = theme.ink(theme.palette[4]);
+    let content = match line.kind {
+        Kind::Heading | Kind::Code | Kind::Table => line.text.clone().into_any_element(),
+        _ => rich(id, index, line, theme, accent),
+    };
+    line_with(id, index, line, theme, mono, content)
+}
+
+/// The same line layout with caller-owned text interaction, such as transcript
+/// selection. Parsing, indentation and block styling remain shared.
+pub(crate) fn line_with(
+    id: &'static str,
+    index: usize,
+    line: &Line,
+    theme: &Theme,
+    mono: &FontConfig,
+    content: AnyElement,
+) -> Div {
+    let accent = theme.ink(theme.palette[4]);
     let row = div()
         .debug_selector(move || format!("{id}-line-{index}"))
         .min_w_0()
         .pl(px(f32::from(line.indent) * 14.));
-    let item = |row: Div, marker: String| {
+    let item = |row: Div, marker: String, content: AnyElement| {
         row.flex()
             .gap(px(6.))
             .child(div().flex_none().text_color(rgb(accent)).child(marker))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .child(rich(id, index, line, theme, accent)),
-            )
+            .child(div().flex_1().min_w_0().child(content))
     };
     match line.kind {
         Kind::Blank => row.h(px(6.)),
@@ -444,34 +457,57 @@ pub(crate) fn line(
             .pt(px(4.))
             .font_weight(FontWeight::SEMIBOLD)
             .text_color(rgb(theme.primary()))
-            .child(line.text.clone()),
+            .child(content),
         Kind::Code => row
             .px(px(8.))
             .bg(rgb(theme.active))
             .text_font(mono)
             .whitespace_nowrap()
             .overflow_hidden()
-            .child(line.text.clone()),
-        Kind::Bullet => item(row, "\u{2022}".to_owned()),
-        Kind::Numbered(number) => item(row, format!("{number}.")),
+            .child(content),
+        Kind::Bullet => item(row, "\u{2022}".to_owned(), content),
+        Kind::Numbered(number) => item(row, format!("{number}."), content),
         Kind::Quote => row
             .pl(px(8.))
             .border_l_2()
             .border_color(rgb(theme.active))
             .text_color(rgb(theme.subtext()))
-            .child(rich(id, index, line, theme, accent)),
+            .child(content),
         Kind::Rule => row.py(px(4.)).child(div().h(px(1.)).bg(rgb(theme.active))),
         Kind::Table => row
             .px(px(8.))
             .text_font(mono)
             .whitespace_nowrap()
             .overflow_hidden()
-            .child(line.text.clone()),
-        Kind::Paragraph => row.child(rich(id, index, line, theme, accent)),
+            .child(content),
+        Kind::Paragraph => row.child(content),
     }
 }
 
 fn rich(id: &'static str, index: usize, line: &Line, theme: &Theme, accent: u32) -> AnyElement {
+    let text =
+        StyledText::new(line.text.clone()).with_highlights(line_highlights(line, theme, accent));
+    if line.links.is_empty() {
+        return text.into_any_element();
+    }
+    let urls: Vec<String> = line.links.iter().map(|item| item.url.clone()).collect();
+    InteractiveText::new((id, index), text)
+        .on_click(
+            line.links.iter().map(|item| item.range.clone()).collect(),
+            move |clicked, _, cx| {
+                if let Some(url) = urls.get(clicked) {
+                    cx.open_url(url);
+                }
+            },
+        )
+        .into_any_element()
+}
+
+pub(crate) fn line_highlights(
+    line: &Line,
+    theme: &Theme,
+    accent: u32,
+) -> Vec<(Range<usize>, HighlightStyle)> {
     let code = HighlightStyle {
         color: Some(rgb(theme.foreground).into()),
         background_color: Some(rgb(theme.active).into()),
@@ -493,30 +529,17 @@ fn rich(id: &'static str, index: usize, line: &Line, theme: &Theme, accent: u32)
         }),
         ..Default::default()
     };
-    let highlights = line.highlights().map(|(range, mark)| {
-        let style = match mark {
-            Mark::Code => code,
-            Mark::Bold => bold,
-            Mark::Italic => italic,
-            Mark::Link => link,
-        };
-        (range, style)
-    });
-    let text = StyledText::new(line.text.clone()).with_highlights(highlights);
-    if line.links.is_empty() {
-        return text.into_any_element();
-    }
-    let urls: Vec<String> = line.links.iter().map(|item| item.url.clone()).collect();
-    InteractiveText::new((id, index), text)
-        .on_click(
-            line.links.iter().map(|item| item.range.clone()).collect(),
-            move |clicked, _, cx| {
-                if let Some(url) = urls.get(clicked) {
-                    cx.open_url(url);
-                }
-            },
-        )
-        .into_any_element()
+    line.highlights()
+        .map(|(range, mark)| {
+            let style = match mark {
+                Mark::Code => code,
+                Mark::Bold => bold,
+                Mark::Italic => italic,
+                Mark::Link => link,
+            };
+            (range, style)
+        })
+        .collect()
 }
 
 #[cfg(test)]

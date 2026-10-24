@@ -1,12 +1,15 @@
 //! What the view draws for an entry, prepared when the entry changes rather
-//! than on every frame: agent text parsed as Markdown with its Mermaid
+//! than on every frame: message text parsed as Markdown with its Mermaid
 //! fences split out as diagrams, its HTML fences as pages to preview, and
 //! its picture links as pictures, pictures asked of [`Visuals`], and a tool
 //! call's output and file changes summarized.
 
 use super::visual::{MAX_DIAGRAM_SOURCE, Source, VisualId, Visuals};
 use crate::release_notes::{self, Line};
-use herdr_chat_protocol::{EntryId, EntryKind, ToolContent, Transcript};
+use herdr_chat_protocol::{
+    EntryId, EntryKind, MAX_QUESTION_ANSWERS, MAX_QUESTION_TEXT, QuestionAnswer, ToolContent,
+    Transcript,
+};
 use std::{
     collections::{HashMap, HashSet},
     rc::Rc,
@@ -62,10 +65,12 @@ pub(crate) struct ToolSummary {
     pub(crate) terminals: usize,
 }
 
-/// One stretch of an agent message.
+/// One stretch of a user or agent message.
 #[derive(Debug)]
 pub(crate) enum Part {
     Text(Rc<[Line]>),
+    Rich(Rc<[super::rich::Block]>),
+    Widget(Rc<super::widgets::Document>),
     /// A Mermaid fence, with its source as code lines for when it cannot be
     /// drawn.
     Diagram(VisualId, Rc<[Line]>),
@@ -89,6 +94,11 @@ pub(crate) enum Part {
 #[derive(Debug)]
 pub(crate) enum Body {
     Message(Vec<Part>),
+    /// Historical Q&A, with its readable copy payload prepared once as well.
+    Answers {
+        text: Rc<str>,
+        parts: Vec<Part>,
+    },
     /// An agent's compaction summary, folded.
     Summary(super::summary::Summary),
     Image(VisualId),
@@ -98,16 +108,22 @@ pub(crate) enum Body {
 impl Body {
     fn visuals(&self) -> impl Iterator<Item = VisualId> + '_ {
         let (parts, images): (&[Part], &[VisualId]) = match self {
-            Self::Message(parts) => (parts, &[]),
+            Self::Message(parts) | Self::Answers { parts, .. } => (parts, &[]),
             Self::Summary(_) => (&[], &[]),
             Self::Image(id) => (&[], std::slice::from_ref(id)),
             Self::Tool(summary) => (&[], &summary.images),
         };
         parts
             .iter()
-            .filter_map(|part| match part {
-                Part::Diagram(id, _) | Part::Remote { id, .. } => Some(*id),
-                Part::Text(_) | Part::Html { .. } | Part::Picture { .. } => None,
+            .flat_map(|part| match part {
+                Part::Diagram(id, _) | Part::Remote { id, .. } => vec![*id],
+                Part::Rich(blocks) => blocks
+                    .iter()
+                    .flat_map(super::rich::Block::visuals)
+                    .collect(),
+                Part::Text(_) | Part::Widget(_) | Part::Html { .. } | Part::Picture { .. } => {
+                    Vec::new()
+                }
             })
             .chain(images.iter().copied())
     }
@@ -121,6 +137,7 @@ pub(crate) struct Prepared {
     /// Files the transcript's tool calls changed, first change first, with
     /// their lines added and removed summed.
     changed: Vec<DiffSummary>,
+    text: super::selection::Document,
     pub(crate) visuals: Visuals,
 }
 
@@ -131,6 +148,22 @@ impl Prepared {
 
     pub(crate) fn changed(&self) -> &[DiffSummary] {
         &self.changed
+    }
+
+    pub(crate) fn text(&self) -> &super::selection::Document {
+        &self.text
+    }
+
+    /// Remote links display their destination beside the label. Keep the
+    /// cached selection projection in the same coordinate system as the view.
+    pub(crate) fn set_remote_links(&mut self, remote: bool) {
+        self.text.set_remote_links(remote);
+    }
+
+    /// Apply before `update`: folded records contribute only their visible
+    /// label/gist, never undisclosed source text between selected messages.
+    pub(crate) fn set_expanded(&mut self, expanded: &HashSet<EntryId>) {
+        self.text.set_expanded(expanded);
     }
 
     /// The entries that draw `visual`, to measure again once it lands.
@@ -155,6 +188,15 @@ impl Prepared {
             }
             let visuals = &mut self.visuals;
             let body = match &entry.kind {
+                EntryKind::User { text } => Body::Message(message(text, visuals)),
+                EntryKind::Notice { answers, .. } if !answers.is_empty() => {
+                    let text: Rc<str> = answers_text(answers).into();
+                    let parts = vec![match super::rich::parse(&text, visuals) {
+                        Some(blocks) => Part::Rich(blocks.into()),
+                        None => Part::Text(message_lines(&text)),
+                    }];
+                    Body::Answers { text, parts }
+                }
                 EntryKind::Agent { text } => {
                     let (lines, cut) = release_notes::parse_within(text, MESSAGE);
                     match super::summary::summary(&lines) {
@@ -173,10 +215,14 @@ impl Prepared {
                     Body::Image(id)
                 }
                 EntryKind::Tool(tool) => Body::Tool(summarize(&tool.content, visuals)),
-                _ => continue,
+                _ => {
+                    self.bodies.remove(&entry.id);
+                    continue;
+                }
             };
             self.bodies.insert(entry.id, (*revision, Rc::new(body)));
         }
+        self.text.update(transcript, keys, &self.bodies);
         self.changed.clear();
         for entry in &transcript.entries {
             let Some((_, body)) = self.bodies.get(&entry.id) else {
@@ -211,36 +257,100 @@ impl Prepared {
     pub(crate) fn clear(&mut self) {
         self.bodies.clear();
         self.changed.clear();
+        self.text.clear();
         self.visuals.clear();
     }
 }
 
-/// An agent message as Markdown text with its diagrams, pages, and
+/// Readable history and its copy payload share the same bounded Markdown.
+/// Only rich Markdown parses this text; HTML/widget fences remain code.
+pub(super) fn answers_text(answers: &[QuestionAnswer]) -> String {
+    let mut source = String::new();
+    let mut remaining = MAX_QUESTION_TEXT;
+    let mut truncated = answers.len() > MAX_QUESTION_ANSWERS;
+    'answers: for (index, answer) in answers.iter().take(MAX_QUESTION_ANSWERS).enumerate() {
+        if index > 0 {
+            source.push_str("\n\n");
+        }
+        source.push_str(&format!("**Question {}**\n\n", index + 1));
+        for (label, text) in [
+            ("", &answer.question),
+            ("\n\n**Answer**\n\n", &answer.answer),
+        ] {
+            source.push_str(label);
+            let end = text.floor_char_boundary(remaining.min(text.len()));
+            source.push_str(&text[..end]);
+            remaining -= end;
+            if end < text.len() {
+                truncated = true;
+                break 'answers;
+            }
+        }
+    }
+    if truncated {
+        source.push_str("\n\n… (answers truncated)");
+    }
+    source
+}
+
+/// A message as Markdown text with its diagrams, pages, and
 /// pictures between it. Only a closed fence becomes a diagram or a page, so
 /// one still streaming shows as code.
 fn message(text: &str, visuals: &mut Visuals) -> Vec<Part> {
+    let mut end = text.len().min(MESSAGE.body);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    end = text[..end]
+        .split_inclusive('\n')
+        .take(MESSAGE.lines)
+        .map(str::len)
+        .sum();
+    let cut = end < text.len();
+    let text = &text[..end];
     let mut parts = Vec::new();
     let mut prose = String::new();
-    let flush = |prose: &mut String, parts: &mut Vec<Part>| {
+    let flush = |prose: &mut String, parts: &mut Vec<Part>, visuals: &mut Visuals| {
         if !prose.trim().is_empty() {
-            parts.push(Part::Text(message_lines(prose)));
+            parts.push(match super::rich::parse(prose, visuals) {
+                Some(blocks) => Part::Rich(blocks.into()),
+                None => Part::Text(message_lines(prose)),
+            });
         }
         prose.clear();
     };
     let mut lines = text.split_inclusive('\n');
-    let (mut diagrams, mut pages) = (0, 0);
+    let (mut diagrams, mut pages, mut widgets) = (0, 0, 0);
     while let Some(line) = lines.next() {
+        let trimmed = line.trim_start();
+        let indentation = &line[..line.len() - trimmed.len()];
+        if indentation.len() > 3 || !indentation.chars().all(|ch| ch == ' ') {
+            prose.push_str(line);
+            continue;
+        }
         if let Some(part) = picture(line) {
-            flush(&mut prose, &mut parts);
+            flush(&mut prose, &mut parts, visuals);
             parts.push(part);
             continue;
         }
-        let fence = line.trim().strip_prefix("```").map(str::trim);
+        let marker = trimmed.chars().next().filter(|ch| matches!(ch, '`' | '~'));
+        let count = marker.map_or(0, |marker| {
+            trimmed.chars().take_while(|ch| *ch == marker).count()
+        });
+        let fence = (count >= 3).then(|| trimmed[count..].trim());
+        if marker == Some('`') && fence.is_some_and(|info| info.contains('`')) {
+            prose.push_str(line);
+            continue;
+        }
         let kind = match fence {
             Some(info) if info.eq_ignore_ascii_case("mermaid") && diagrams < DIAGRAMS => {
                 Fence::Diagram
             }
             Some(info) if info.eq_ignore_ascii_case("html") && pages < PAGES => Fence::Page,
+            Some(info) if info.eq_ignore_ascii_case("herdr-ui") && widgets < WIDGETS => {
+                Fence::Widget
+            }
+            Some(_) => Fence::Code,
             _ => {
                 prose.push_str(line);
                 continue;
@@ -251,7 +361,10 @@ fn message(text: &str, visuals: &mut Visuals) -> Vec<Part> {
         let mut fence = line.to_owned();
         for inner in lines.by_ref() {
             fence.push_str(inner);
-            if inner.trim() == "```" {
+            let close = inner.trim();
+            if marker
+                .is_some_and(|marker| close.len() >= count && close.chars().all(|ch| ch == marker))
+            {
                 closed = true;
                 break;
             }
@@ -260,13 +373,31 @@ fn message(text: &str, visuals: &mut Visuals) -> Vec<Part> {
         let limit = match kind {
             Fence::Diagram => MAX_DIAGRAM_SOURCE,
             Fence::Page => MAX_PAGE,
+            Fence::Widget => super::widgets::MAX_SOURCE,
+            Fence::Code => MESSAGE.body,
         };
-        if !closed || source.trim().is_empty() || source.len() > limit {
+        if !closed
+            || source.trim().is_empty()
+            || source.len() > limit
+            || matches!(kind, Fence::Code)
+        {
             prose.push_str(&fence);
             continue;
         }
-        flush(&mut prose, &mut parts);
+        if matches!(kind, Fence::Widget) {
+            match super::widgets::Document::parse(&source) {
+                Ok(document) => {
+                    flush(&mut prose, &mut parts, visuals);
+                    widgets += 1;
+                    parts.push(Part::Widget(Rc::new(document)));
+                }
+                Err(_) => prose.push_str(&fence),
+            }
+            continue;
+        }
+        flush(&mut prose, &mut parts, visuals);
         match kind {
+            Fence::Code | Fence::Widget => unreachable!("code and widget fences handled above"),
             Fence::Diagram => {
                 diagrams += 1;
                 let id = VisualId::of(&source);
@@ -283,16 +414,33 @@ fn message(text: &str, visuals: &mut Visuals) -> Vec<Part> {
         }
     }
     if !prose.trim().is_empty() || parts.is_empty() {
-        parts.push(Part::Text(message_lines(&prose)));
+        parts.push(match super::rich::parse(&prose, visuals) {
+            Some(blocks) => Part::Rich(blocks.into()),
+            None => Part::Text(message_lines(&prose)),
+        });
+    }
+    if cut {
+        if let Some(Part::Text(lines)) = parts.last_mut() {
+            let mut appended = lines.to_vec();
+            appended.push(release_notes::note(CUT));
+            *lines = appended.into();
+        } else {
+            parts.push(Part::Text(vec![release_notes::note(CUT)].into()));
+        }
     }
     parts
 }
 
 /// What a closed fence becomes.
 enum Fence {
+    Code,
     Diagram,
     Page,
+    Widget,
 }
+
+/// Cards per message; excess cards remain readable source.
+const WIDGETS: usize = 4;
 
 /// Pages per message; later HTML fences stay code.
 const PAGES: usize = 4;

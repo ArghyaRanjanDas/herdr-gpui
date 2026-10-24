@@ -137,7 +137,7 @@ impl Harness {
             .entries
             .iter()
             .filter_map(|entry| match &entry.kind {
-                EntryKind::Notice { level, text } => Some((*level, text.clone())),
+                EntryKind::Notice { level, text, .. } => Some((*level, text.clone())),
                 _ => None,
             })
             .collect()

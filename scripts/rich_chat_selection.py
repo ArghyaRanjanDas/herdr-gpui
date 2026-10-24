@@ -1,0 +1,138 @@
+"""Exercise native drag/copy only on the capture script's private Xvfb display."""
+
+import ctypes as c
+import json
+from pathlib import Path
+import subprocess
+import time
+
+
+def capture_selection(env, directory, app):
+    display_name = env["DISPLAY"]
+    if not display_name.startswith(":") or not display_name[1:].isdigit():
+        raise RuntimeError("Expected the private Xvfb display")
+    directory = Path(directory)
+    log = directory / "native.log"
+    x = c.CDLL("libX11.so.6")
+    test = c.CDLL("libXtst.so.6")
+    pointer, window = c.c_void_p, c.c_ulong
+    x.XOpenDisplay.argtypes = [c.c_char_p]
+    x.XOpenDisplay.restype = pointer
+    x.XDefaultRootWindow.argtypes = [pointer]
+    x.XDefaultRootWindow.restype = window
+    x.XQueryTree.argtypes = [pointer, window, c.POINTER(window), c.POINTER(window), c.POINTER(c.POINTER(window)), c.POINTER(c.c_uint)]
+    x.XFetchName.argtypes = [pointer, window, c.POINTER(c.c_char_p)]
+    x.XFree.argtypes = [pointer]
+    x.XSetInputFocus.argtypes = [pointer, window, c.c_int, window]
+    x.XTranslateCoordinates.argtypes = [pointer, window, window, c.c_int, c.c_int, c.POINTER(c.c_int), c.POINTER(c.c_int), c.POINTER(window)]
+    x.XStringToKeysym.argtypes = [c.c_char_p]
+    x.XStringToKeysym.restype = window
+    x.XKeysymToKeycode.argtypes = [pointer, window]
+    x.XKeysymToKeycode.restype = c.c_ubyte
+    x.XSync.argtypes = [pointer, c.c_int]
+    x.XCloseDisplay.argtypes = [pointer]
+    test.XTestFakeKeyEvent.argtypes = [pointer, c.c_uint, c.c_int, window]
+    test.XTestFakeButtonEvent.argtypes = [pointer, c.c_uint, c.c_int, window]
+    test.XTestFakeMotionEvent.argtypes = [pointer, c.c_int, c.c_int, c.c_int, window]
+    display = x.XOpenDisplay(display_name.encode())
+    if not display:
+        raise RuntimeError("Could not open the private selection display")
+    button_down = False
+    keys_down = []
+    try:
+        root = x.XDefaultRootWindow(display)
+        root_return, parent = window(), window()
+        children, count = c.POINTER(window)(), c.c_uint()
+        if not x.XQueryTree(display, root, c.byref(root_return), c.byref(parent), c.byref(children), c.byref(count)):
+            raise RuntimeError("Could not inspect private fixture windows")
+        matches = []
+        try:
+            for i in range(count.value):
+                title = c.c_char_p()
+                if x.XFetchName(display, children[i], c.byref(title)) and title.value:
+                    try:
+                        if title.value.decode(errors="replace") == "Herdr · Rich chat preview":
+                            matches.append(children[i])
+                    finally:
+                        x.XFree(c.cast(title, pointer))
+        finally:
+            x.XFree(c.cast(children, pointer))
+        if len(matches) != 1:
+            raise RuntimeError(f"Expected one private fixture, found {len(matches)}")
+        x.XSetInputFocus(display, matches[0], 2, 0)
+        origin_x, origin_y, child = c.c_int(), c.c_int(), window()
+        if not x.XTranslateCoordinates(display, matches[0], root, 0, 0, c.byref(origin_x), c.byref(origin_y), c.byref(child)):
+            raise RuntimeError("Could not translate fixture coordinates")
+        x.XSync(display, False)
+
+        def record(prefix):
+            records = [line[len(prefix):] for line in log.read_text(errors="replace").splitlines() if line.startswith(prefix)]
+            return json.loads(records[-1]) if records else None
+
+        def wait_state(expected, copied):
+            deadline = time.monotonic() + 4
+            while time.monotonic() < deadline:
+                state = record("RICH CHAT SELECTION STATE ")
+                if state and state["selected"] == expected and state["clipboard"] == copied:
+                    if expected and not state["reader_focused"]:
+                        raise AssertionError("Selection did not own keyboard focus")
+                    return state
+                if app.poll() is not None:
+                    raise RuntimeError("Selection fixture exited during input")
+                time.sleep(0.05)
+            raise TimeoutError(f"Native selection mismatch: expected={expected!r}, observed={state!r}")
+
+        def chord(names):
+            for name in names:
+                code = x.XKeysymToKeycode(display, x.XStringToKeysym(name.encode()))
+                if not code:
+                    raise RuntimeError(f"Missing test key: {name}")
+                test.XTestFakeKeyEvent(display, code, True, 0)
+                keys_down.append(code)
+            for code in reversed(keys_down):
+                test.XTestFakeKeyEvent(display, code, False, 0)
+            keys_down.clear()
+            x.XSync(display, False)
+
+        def motion(point):
+            test.XTestFakeMotionEvent(display, -1, round(point[0]) + origin_x.value, round(point[1]) + origin_y.value, 0)
+            x.XSync(display, False)
+
+        probe = record("RICH CHAT SELECTION PROBE ")
+        if probe is None:
+            raise RuntimeError("Missing native selection coordinates")
+        cases = [
+            ("forward", probe["from"], probe["to"], probe["expected"]),
+            ("reverse", probe["to"], probe["from"], probe["expected"]),
+            ("inline-math", probe["inline_from"], probe["inline_to"], probe["inline_expected"]),
+            ("display-math", probe["math_from"], probe["math_to"], probe["math_expected"]),
+            ("link-drag", probe["link_from"], probe["link_to"], probe["link_expected"]),
+        ]
+        results = []
+        for name, start, end, expected in cases:
+            chord(["Escape"])
+            wait_state(None, "selection probe ready")
+            motion(start)
+            test.XTestFakeButtonEvent(display, 1, True, 0)
+            button_down = True
+            x.XSync(display, False)
+            time.sleep(0.08)
+            for step in range(1, 7):
+                motion([start[i] + (end[i] - start[i]) * step / 6 for i in range(2)])
+                time.sleep(0.03)
+            test.XTestFakeButtonEvent(display, 1, False, 0)
+            button_down = False
+            x.XSync(display, False)
+            chord(["Control_L", "c"])
+            state = wait_state(expected, expected)
+            output = directory / f"selection-{name}.png"
+            subprocess.run(["magick", "import", "-display", display_name, "-window", "root", str(output)], env=env, check=True, timeout=10)
+            results.append({"case": name, "state": state, "screenshot": output.name})
+            (directory / "selection.json").write_text(json.dumps({"status": "passed" if len(results) == len(cases) else "running", "checks": results}, indent=2, ensure_ascii=False))
+    finally:
+        if button_down:
+            test.XTestFakeButtonEvent(display, 1, False, 0)
+        for code in reversed(keys_down):
+            test.XTestFakeKeyEvent(display, code, False, 0)
+        x.XSync(display, False)
+        x.XCloseDisplay(display)

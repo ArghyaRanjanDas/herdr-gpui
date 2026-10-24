@@ -15,25 +15,37 @@ use std::{
     time::{Duration, Instant},
 };
 
+mod activity;
 mod attachments;
 mod chats;
+mod code;
 mod composer;
 mod controls;
 mod discovery;
 mod embeds;
 mod feature;
+mod file_links;
 mod glide;
 mod imessage;
 mod layouts;
 mod link;
 mod list;
 mod menus;
+mod notices;
 mod overlay;
 mod prepared;
+mod questions;
+mod selection;
 mod session;
 mod start;
+mod terminal_input;
 mod timeline;
+mod typography;
+mod user_messages;
 mod visual;
+mod widgets;
+mod width;
+mod zoom;
 
 /// How long a test waits on a worker or a socket before failing.
 const WAIT: Duration = Duration::from_secs(5);

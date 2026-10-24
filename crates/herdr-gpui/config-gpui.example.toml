@@ -459,6 +459,10 @@ size = 12
 # The button in a chat's header steps through them.
 # [chat]
 # layout = "timeline"
+# Maximum reading-column width in logical pixels: 320–4000, or 0 for full width.
+# Settings > General offers a width slider and Full-width chat switch.
+# Command line: herdr-gpui config set chat.max_width 0
+# max_width = 800
 #
 # Scroll smoothly to a streaming reply's new text, rather than jumping to it
 # as each chunk lands. Settings > General edits this while ACP chats are on.

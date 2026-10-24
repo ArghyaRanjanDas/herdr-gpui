@@ -31,6 +31,11 @@ cbc                  = { features = ["block-padding"], version = "0.2.1" }
 percent-encoding     = "2"
 pbkdf2               = { default-features = false, features = ["hmac"], version = "0.13.0" }
 pulldown-cmark       = { default-features = false, features = ["html"], version = "0.13.4" }
+# Native chat math: the engine exposes baseline metrics and bounds before rasterization.
+ratex-layout         = "=0.1.15"
+ratex-parser         = "=0.1.15"
+ratex-render         = { features = ["embed-fonts"], version = "=0.1.15" }
+ratex-types          = "=0.1.15"
 base64               = "0.23.1"
 bincode              = { default-features = false, features = ["serde", "std"], version = "2" }
 # Reads the Windows clipboard off the UI thread, sized before it is copied.

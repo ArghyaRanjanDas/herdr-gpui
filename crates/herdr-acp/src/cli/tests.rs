@@ -3,6 +3,7 @@
 use super::*;
 
 mod connect;
+mod mirror;
 
 fn args(list: &[&str]) -> Vec<OsString> {
     list.iter().map(OsString::from).collect()

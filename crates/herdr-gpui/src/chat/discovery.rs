@@ -58,6 +58,7 @@ pub(crate) fn targets(snapshot: &ClientShellSnapshot, route: Option<&Route>) -> 
         .filter_map(|agent| {
             Some(Target {
                 endpoint: endpoint(&agent.tokens)?,
+                existing: None,
                 pane_id: agent.pane_id.clone(),
                 route: route.clone(),
             })
@@ -65,4 +66,88 @@ pub(crate) fn targets(snapshot: &ClientShellSnapshot, route: Option<&Route>) -> 
         .filter(|target| seen.insert(target.pane_id.clone()))
         .take(MAX_CHATS)
         .collect()
+}
+
+/// Verified CLI bindings add rich views to existing terminals. Real ACP
+/// endpoints win, and a vanished/changed agent cannot retain its old overlay.
+pub(crate) fn with_existing(
+    mut targets: Vec<Target>,
+    snapshot: &ClientShellSnapshot,
+    route: Option<&Route>,
+    bindings: &[super::existing::Binding],
+) -> Vec<Target> {
+    let Some(route) = route else { return targets };
+    for binding in bindings.iter().take(MAX_CHATS) {
+        if targets.len() >= MAX_CHATS {
+            break;
+        }
+        if targets
+            .iter()
+            .any(|target| target.pane_id == binding.pane_id)
+            || !snapshot.agents.iter().any(|agent| {
+                agent.pane_id == binding.pane_id
+                    && agent.agent.as_deref() == Some(binding.agent.name())
+            })
+        {
+            continue;
+        }
+        let Some(endpoint) = uuid::Uuid::parse_str(&binding.session_id)
+            .ok()
+            .and_then(|id| id.simple().to_string().parse().ok())
+        else {
+            continue;
+        };
+        targets.push(Target {
+            endpoint,
+            existing: Some(binding.clone()),
+            pane_id: binding.pane_id.clone(),
+            route: route.clone(),
+        });
+    }
+    targets
+}
+
+/// Trusted, explicit sidecars add a view to an existing agent without writing
+/// its lifecycle metadata. ACP's own endpoint always takes precedence.
+pub(crate) fn with_mirrors(
+    mut targets: Vec<Target>,
+    snapshot: &ClientShellSnapshot,
+    route: Option<&Route>,
+    mirrors: &[crate::config::chat::TranscriptMirror],
+    render_existing: bool,
+) -> Vec<Target> {
+    // A static mirror cannot stand in for a failed/pending live lookup: the
+    // pane may already contain a different conversation. Keep its terminal.
+    if render_existing {
+        return targets;
+    }
+    let Some(route) = route else { return targets };
+    for mirror in mirrors.iter().take(MAX_CHATS) {
+        if targets.len() >= MAX_CHATS {
+            break;
+        }
+        let matches_host = match (route, mirror.host.as_deref()) {
+            (Route::Local, None) => true,
+            (Route::Ssh(host), Some(expected)) => host == expected,
+            _ => false,
+        };
+        if !matches_host
+            || targets.iter().any(|target| target.pane_id == mirror.pane)
+            || !snapshot
+                .agents
+                .iter()
+                .any(|agent| agent.pane_id == mirror.pane)
+        {
+            continue;
+        }
+        if let Ok(endpoint) = mirror.endpoint.parse() {
+            targets.push(Target {
+                endpoint,
+                existing: None,
+                pane_id: mirror.pane.clone(),
+                route: route.clone(),
+            });
+        }
+    }
+    targets
 }

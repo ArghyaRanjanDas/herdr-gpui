@@ -468,6 +468,19 @@ pub(crate) fn now_ms() -> u64 {
 fn entry_size(entry: &herdr_chat_protocol::Entry) -> usize {
     use herdr_chat_protocol::{EntryKind, ToolContent};
     match &entry.kind {
+        EntryKind::Notice {
+            answers,
+            details,
+            text,
+            ..
+        } => {
+            text.len()
+                + details.as_ref().map_or(0, String::len)
+                + answers
+                    .iter()
+                    .map(|answer| answer.question.len() + answer.answer.len())
+                    .sum::<usize>()
+        }
         EntryKind::Tool(tool) => {
             tool.title.len()
                 + tool.locations.iter().map(String::len).sum::<usize>()

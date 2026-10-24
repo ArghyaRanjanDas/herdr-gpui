@@ -22,6 +22,10 @@ pub enum Error {
     MissingEndpoint,
     #[error("`{0}` is not a chat endpoint id")]
     InvalidEndpoint(String),
+    #[error("mirror supports only codex and claude transcripts")]
+    MirrorAgent,
+    #[error("observe needs a Codex/Claude session UUID, positive PID and process start ticks")]
+    ObserveIdentity,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -29,6 +33,10 @@ pub(crate) enum Parsed {
     Run(Options),
     /// Carry a client connection to a running chat over stdin and stdout.
     Connect(herdr_chat_protocol::EndpointId),
+    /// Watch an existing CLI transcript without starting or driving an agent.
+    Mirror(MirrorOptions),
+    /// Project one verified running CLI process over standard streams.
+    Observe(crate::observe::Options),
     /// List the agents installed here, one name per line.
     Agents,
     Help,
@@ -64,6 +72,14 @@ pub(crate) enum AgentChoice {
     },
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct MirrorOptions {
+    pub agent: Agent,
+    pub endpoint: Option<herdr_chat_protocol::EndpointId>,
+    pub pane: Option<String>,
+    pub path: PathBuf,
+}
+
 pub(crate) const HELP: &str = "\
 Runs an ACP agent in this terminal and shares the conversation with Herdr UI.
 
@@ -73,6 +89,13 @@ Usage:
   herdr-acp connect ID   Attach stdin and stdout to the running chat ID
                          (Herdr UI runs this over SSH for remote chats)
   herdr-acp agents       List the agents installed here, one per line
+  herdr-acp observe codex|claude SESSION_ID PID START_TICKS [--pane ID]
+                        Render the existing Linux agent over stdin/stdout.
+                        Starts no agent; input stays in its original terminal.
+  herdr-acp mirror codex|claude FILE [--pane ID] [--endpoint ID]
+                        Watch an existing JSONL transcript, read-only; starts
+                        no agent and changes no Herdr pane metadata. Prints
+                        its endpoint ID once ready. Stop with Ctrl+C.
 
 Agents:
   claude     claude itself, or with --acp claude-agent-acp
@@ -109,6 +132,14 @@ Keys:
 
 pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Parsed, Error> {
     let mut args = args.into_iter().peekable();
+    if args.peek().and_then(|arg| arg.to_str()) == Some("observe") {
+        args.next();
+        return observe(args);
+    }
+    if args.peek().and_then(|arg| arg.to_str()) == Some("mirror") {
+        args.next();
+        return mirror(args);
+    }
     if args.peek().and_then(|arg| arg.to_str()) == Some("agents") {
         args.next();
         return match args.next() {
@@ -182,6 +213,81 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Parsed, 
         args: Vec::new(),
     };
     Ok(Parsed::Run(options))
+}
+
+fn mirror(args: impl Iterator<Item = OsString>) -> Result<Parsed, Error> {
+    let mut args = args.peekable();
+    if args
+        .peek()
+        .and_then(|arg| arg.to_str())
+        .is_some_and(|arg| matches!(arg, "-h" | "--help"))
+    {
+        return Ok(Parsed::Help);
+    }
+    let agent = match args.next().as_deref().and_then(|arg| arg.to_str()) {
+        Some("codex") => Agent::Codex,
+        Some("claude") => Agent::Claude,
+        _ => return Err(Error::MirrorAgent),
+    };
+    let path = args.next().ok_or(Error::MissingValue("mirror FILE"))?;
+    if matches!(path.to_str(), Some("-h" | "--help")) {
+        return Ok(Parsed::Help);
+    }
+    let mut options = MirrorOptions {
+        agent,
+        endpoint: None,
+        pane: None,
+        path: path.into(),
+    };
+    while let Some(arg) = args.next() {
+        match arg.to_str() {
+            Some("--pane") => options.pane = Some(utf8(args.next(), "--pane")?),
+            Some("--endpoint") => {
+                let id = utf8(args.next(), "--endpoint")?;
+                options.endpoint = Some(id.parse().map_err(|_| Error::InvalidEndpoint(id))?);
+            }
+            Some("-h" | "--help") => return Ok(Parsed::Help),
+            _ => return Err(Error::UnknownOption(arg)),
+        }
+    }
+    Ok(Parsed::Mirror(options))
+}
+
+fn observe(mut args: impl Iterator<Item = OsString>) -> Result<Parsed, Error> {
+    let name = utf8(args.next(), "observe AGENT")?;
+    if matches!(name.as_str(), "-h" | "--help") {
+        return Ok(Parsed::Help);
+    }
+    let agent = name.parse::<Agent>().map_err(|_| Error::MirrorAgent)?;
+    if !matches!(agent, Agent::Codex | Agent::Claude) {
+        return Err(Error::MirrorAgent);
+    }
+    let session = utf8(args.next(), "observe SESSION_ID")?;
+    uuid::Uuid::parse_str(&session).map_err(|_| Error::ObserveIdentity)?;
+    let pid = utf8(args.next(), "observe PID")?
+        .parse::<u32>()
+        .ok()
+        .filter(|pid| *pid > 0)
+        .ok_or(Error::ObserveIdentity)?;
+    let started = utf8(args.next(), "observe START_TICKS")?
+        .parse::<u64>()
+        .ok()
+        .filter(|ticks| *ticks > 0)
+        .ok_or(Error::ObserveIdentity)?;
+    let mut pane = None;
+    while let Some(arg) = args.next() {
+        match arg.to_str() {
+            Some("--pane") => pane = Some(utf8(args.next(), "--pane")?),
+            _ => return Err(Error::UnknownOption(arg)),
+        }
+    }
+    Ok(Parsed::Observe(crate::observe::Options {
+        agent,
+        session,
+        pid,
+        started,
+        pane,
+    }))
 }
 
 fn utf8(value: Option<OsString>, option: &'static str) -> Result<String, Error> {

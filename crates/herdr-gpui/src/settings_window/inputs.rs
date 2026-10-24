@@ -17,6 +17,7 @@ use std::ops::RangeInclusive;
 /// Every number field the pages show; the selector is the control's id.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::settings_window) enum NumberField {
+    ChatMaxWidth,
     Spacing(Spacing),
     FontSize(FontFace),
     ToastDelay,
@@ -27,6 +28,7 @@ pub(in crate::settings_window) enum NumberField {
 impl NumberField {
     pub(in crate::settings_window) fn selector(self) -> &'static str {
         match self {
+            Self::ChatMaxWidth => "general-chat-width-control",
             Self::Spacing(spacing) => spacing.control(),
             Self::FontSize(face) => size_control(face),
             Self::ToastDelay => "notif-delay-control",
@@ -38,6 +40,10 @@ impl NumberField {
     /// The values the field accepts.
     pub(in crate::settings_window) fn range(self) -> RangeInclusive<f32> {
         match self {
+            Self::ChatMaxWidth => {
+                let range = crate::config::chat::MAX_WIDTH_RANGE;
+                f32::from(*range.start())..=f32::from(*range.end())
+            }
             Self::Spacing(spacing) => spacing.range(),
             Self::FontSize(_) => FONT_SIZE_RANGE,
             Self::ToastDelay => 0.0..=3600.0,
@@ -232,7 +238,9 @@ impl SettingsWindow {
                 let preview = NumberPreview { field, value };
                 if matches!(
                     field,
-                    NumberField::SoundVolume | NumberField::TerminalPadding(..)
+                    NumberField::ChatMaxWidth
+                        | NumberField::SoundVolume
+                        | NumberField::TerminalPadding(..)
                 ) && field.range().contains(&value)
                     && self.number_preview != Some(preview)
                 {
@@ -252,6 +260,9 @@ impl SettingsWindow {
         let started = valid && !self.busy();
         if valid {
             match field {
+                NumberField::ChatMaxWidth => {
+                    self.save_preference(Preference::ChatMaxWidth(value as u16), cx);
+                }
                 NumberField::ToastDelay => {
                     self.save_preference(Preference::NotificationDelay(Some(value as u64)), cx);
                 }

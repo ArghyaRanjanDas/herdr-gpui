@@ -5,7 +5,7 @@
 use super::{
     chats::{self, Connect},
     discovery,
-    visual::{DiagramStyle, Drawn, VisualId},
+    visual::{DiagramStyle, Output, VisualId},
 };
 use crate::{HerdrWindow, search_input::SearchInput};
 use gpui::{prelude::*, *};
@@ -34,28 +34,117 @@ impl HerdrWindow {
             .get(self.selected_endpoint)
             .filter(|_| enabled)
             .and_then(|endpoint| discovery::route(&endpoint.connection.target, &self.live));
+        let now = Instant::now();
+        let scope = self
+            .endpoints
+            .get(self.selected_endpoint)
+            .filter(|_| self.config.chat.render_existing && route.is_some())
+            .and_then(|endpoint| {
+                self.live
+                    .snapshot
+                    .as_ref()
+                    .map(|snapshot| super::existing::Scope {
+                        target: endpoint.connection.target.clone(),
+                        boot: snapshot.boot_id.clone(),
+                        generation: (self.selection_epoch, endpoint.generation),
+                    })
+            });
+        let candidates = self
+            .live
+            .snapshot
+            .as_ref()
+            .map(|snapshot| {
+                snapshot
+                    .agents
+                    .iter()
+                    .filter(|agent| matches!(agent.agent.as_deref(), Some("codex" | "claude")))
+                    .filter(|agent| discovery::endpoint(&agent.tokens).is_none())
+                    .map(|agent| agent.pane_id.clone())
+                    .take(super::MAX_CHATS)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let discovered = self.chats.existing.poll(scope, &candidates, now);
+        if discovered && let Some(error) = self.chats.existing.error() {
+            tracing::debug!(%error, "Existing agent discovery unavailable");
+        }
         let targets = self
             .live
             .snapshot
             .as_deref()
-            .map(|snapshot| discovery::targets(snapshot, route.as_ref()))
+            .map(|snapshot| {
+                discovery::with_mirrors(
+                    discovery::with_existing(
+                        discovery::targets(snapshot, route.as_ref()),
+                        snapshot,
+                        route.as_ref(),
+                        self.chats.existing.bindings(),
+                    ),
+                    snapshot,
+                    route.as_ref(),
+                    &self.config.chat.mirrors,
+                    self.config.chat.render_existing,
+                )
+            })
             .unwrap_or_default();
         if enabled {
             self.locate_chat_program(cx);
             self.probe_chat_agents(cx);
         }
         self.poll_chat_start(cx);
-        let now = Instant::now();
-        let mut changed = self.chats.reconcile(targets, now, connect);
+        let mut changed = self.chats.reconcile(targets, now, connect) || discovered;
         // A layout saved from Settings or the command line arrives here.
         changed |= self.chats.relayout(self.config.chat.layout);
+        changed |= self.chats.rewidth(self.config.chat.max_width);
         changed |= self.chats.poll(now);
+        for pane in self
+            .chats
+            .panes_mut()
+            .filter(|pane| pane.target.existing.is_some())
+        {
+            let status = self
+                .live
+                .snapshot
+                .as_ref()
+                .and_then(|snapshot| {
+                    snapshot
+                        .agents
+                        .iter()
+                        .find(|agent| agent.pane_id == pane.target.pane_id)
+                })
+                .map(|agent| agent.agent_status);
+            use herdr_client::protocol::AgentStatus;
+            let status = match status {
+                Some(AgentStatus::Idle | AgentStatus::Done) => Status::Idle,
+                Some(AgentStatus::Working | AgentStatus::Blocked) => Status::Working,
+                _ => Status::Starting,
+            };
+            changed |= pane.session.set_observed_status(status);
+        }
         self.prepare_chat_visuals(window, cx);
         let mut font = self.config.ui.clone();
         font.size = self.chat_text_size();
         let theme = self.theme.clone();
         for pane in self.chats.panes_mut() {
             if !pane.available() {
+                continue;
+            }
+            pane.text_focus.get_or_insert_with(|| {
+                changed = true;
+                cx.focus_handle()
+            });
+            if pane.session.transcript().read_only {
+                // An observed live agent still owns its original terminal
+                // editor below the rich conversation. It needs no second
+                // composer and must retain normal terminal focus and IME.
+                if pane.target.existing.is_some() {
+                    pane.read_only_focus = None;
+                    continue;
+                }
+                pane.read_only_focus.get_or_insert_with(|| {
+                    changed = true;
+                    cx.focus_handle()
+                });
                 continue;
             }
             let composer = pane.composer.get_or_insert_with(|| {
@@ -111,7 +200,7 @@ impl HerdrWindow {
 
     /// Starts the pictures and diagrams each chat waits for on the
     /// background executor, and drops the textures no entry draws any more.
-    fn prepare_chat_visuals(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn prepare_chat_visuals(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         for texture in self.chats.take_released() {
             cx.drop_image(texture, Some(window));
         }
@@ -119,7 +208,9 @@ impl HerdrWindow {
         for page in self.chats.take_closed_pages() {
             self.close_chat_page(page);
         }
-        let style = DiagramStyle::of(&self.theme, &self.config.ui);
+        let mut font = self.config.ui.clone();
+        font.size = self.chat_text_size();
+        let style = DiagramStyle::of(&self.theme, &font);
         let renderer = cx.svg_renderer();
         for pane in self.chats.panes_mut() {
             for texture in pane.prepared.visuals.take_released() {
@@ -144,7 +235,7 @@ impl HerdrWindow {
         pane_id: &str,
         id: VisualId,
         ticket: u64,
-        drawn: super::visual::Result<Drawn>,
+        drawn: super::visual::Result<Output>,
         cx: &mut Context<Self>,
     ) {
         let Some(pane) = self.chats.pane_mut(pane_id) else {
@@ -161,9 +252,9 @@ impl HerdrWindow {
         self.redraw_terminal(cx);
     }
 
-    /// The composer of the chat over the Herdr-focused pane, when the
-    /// window shows that chat now.
-    fn focused_chat_composer(&self) -> Option<Entity<SearchInput>> {
+    /// The keyboard destination of the visible, Herdr-focused chat. A mirror
+    /// uses an inert focus target so its hidden terminal cannot receive input.
+    fn focused_chat_handle(&self, window: &Window, cx: &App) -> Option<FocusHandle> {
         let surface = self.live.surface.as_deref()?;
         if surface.popup.is_some() || !self.live.surface_ready() {
             return None;
@@ -172,24 +263,39 @@ impl HerdrWindow {
         if !self.chats.shown(pane_id) || !surface.panes.iter().any(|p| p.pane_id == pane_id) {
             return None;
         }
-        self.chats.pane(pane_id)?.composer.clone()
-    }
-
-    /// Typing reaches a chat only through its composer: the program's own
-    /// view under it is hidden. So the composer takes the keyboard from the
-    /// terminal while its pane is focused, and gives it back once Herdr's
-    /// focus moves on or a popup covers the panes.
-    fn follow_chat_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let target = self.focused_chat_composer();
-        let holding = self.chats.panes().find_map(|pane| {
+        let pane = self.chats.pane(pane_id)?;
+        if let Some(focus) = &pane.text_focus
+            && focus.is_focused(window)
+        {
+            return Some(focus.clone());
+        }
+        if pane.target.existing.is_some() {
+            return None;
+        }
+        if pane.session.transcript().read_only {
+            pane.read_only_focus.clone()
+        } else {
             pane.composer
                 .as_ref()
-                .filter(|input| input.read(cx).focus.is_focused(window))
-                .cloned()
+                .map(|input| input.read(cx).focus.clone())
+        }
+    }
+
+    /// A visible chat owns the keyboard through its composer or inert mirror
+    /// focus. Give it back once Herdr's focus moves on or a popup covers it.
+    fn follow_chat_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let target = self.focused_chat_handle(window, cx);
+        let holding = self.chats.panes().find_map(|pane| {
+            pane.composer
+                .iter()
+                .map(|input| input.read(cx).focus.clone())
+                .chain(pane.read_only_focus.iter().cloned())
+                .chain(pane.text_focus.iter().cloned())
+                .find(|focus| focus.is_focused(window))
         });
         match (holding, target) {
             (Some(holding), target) if target.as_ref() != Some(&holding) => {
-                let focus = target.map_or_else(|| self.focus.clone(), |t| t.read(cx).focus.clone());
+                let focus = target.unwrap_or_else(|| self.focus.clone());
                 window.focus(&focus, cx);
             }
             (None, Some(target))
@@ -197,22 +303,81 @@ impl HerdrWindow {
                     && self.menu.page.is_none()
                     && !self.copy_mode_active() =>
             {
-                let focus = target.read(cx).focus.clone();
-                window.focus(&focus, cx);
+                window.focus(&target, cx);
             }
             _ => {}
         }
     }
 
-    /// Whether a chat's composer holds the keyboard, so the terminal must
-    /// not act on a keystroke bubbling out of it.
+    /// Whether a chat owns the keyboard, so its hidden terminal cannot act
+    /// on a keystroke bubbling out of the overlay or one of its fields.
     pub(crate) fn chat_focused(&self, window: &Window, cx: &App) -> bool {
         self.chats.panes().any(|pane| {
             pane.composer
                 .iter()
                 .chain(pane.menu_search.as_ref().map(|(search, _)| search))
                 .any(|input| input.read(cx).focus.is_focused(window))
+                || pane
+                    .read_only_focus
+                    .as_ref()
+                    .is_some_and(|focus| focus.is_focused(window))
+                || pane.widgets.focused(window, cx)
+                || pane
+                    .text_focus
+                    .as_ref()
+                    .is_some_and(|focus| focus.is_focused(window))
         })
+    }
+
+    /// Browser-style zoom while reading a rich conversation or typing in its
+    /// original terminal editor. Other terminal panes keep their Ctrl keys.
+    pub(crate) fn chat_zoom_key(
+        &mut self,
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let key = &event.keystroke;
+        let modifiers = key.modifiers;
+        if !crate::controls::CTRL_SHORTCUTS
+            || !modifiers.control
+            || modifiers.alt
+            || modifiers.platform
+            || modifiers.function
+            || event.prefer_character_input
+        {
+            return;
+        }
+        let command = match key.key.as_str() {
+            "=" | "+" => crate::controls::Command::IncreaseFontSize,
+            "-" if !modifiers.shift => crate::controls::Command::DecreaseFontSize,
+            "0" if !modifiers.shift => crate::controls::Command::ResetFontSize,
+            _ => return,
+        };
+        if self.menu.page.is_some()
+            || self.copy_mode_active()
+            || !(self.focus.is_focused(window) || self.chat_focused(window, cx))
+            || self.keymap().pane_key(key).is_some()
+        {
+            return;
+        }
+        let Some(pane_id) = self
+            .live
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.focused_pane_id.as_deref())
+            .filter(|pane_id| self.chats.shown(pane_id))
+        else {
+            return;
+        };
+        if !self.live.surface.as_ref().is_some_and(|surface| {
+            surface.popup.is_none() && surface.panes.iter().any(|pane| pane.pane_id == pane_id)
+        }) {
+            return;
+        }
+        self.command(command, window, cx);
+        cx.stop_propagation();
+        window.prevent_default();
     }
 
     /// Enter in a menu's search field picks the first match; Escape
@@ -289,9 +454,23 @@ impl HerdrWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.chat_reader_key(pane_id, event, window, cx) {
+            return;
+        }
         let Some(pane) = self.chats.pane_mut(pane_id) else {
             return;
         };
+        if pane.widgets.focused(window, cx) {
+            return;
+        }
+        if pane.target.existing.is_some() {
+            return;
+        }
+        if pane.session.transcript().read_only {
+            cx.stop_propagation();
+            window.prevent_default();
+            return;
+        }
         if let Some(search) = pane
             .menu_search
             .as_ref()
@@ -339,6 +518,14 @@ impl HerdrWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.chat_reader_key(pane_id, event, window, cx) {
+            return;
+        }
+        if self.chats.pane(pane_id).is_some_and(|pane| {
+            pane.widgets.focused(window, cx) || pane.session.transcript().read_only
+        }) {
+            return;
+        }
         if crate::actions::edit_modifiers(event.keystroke.modifiers)
             && event.keystroke.key == "v"
             && self.chat_paste(pane_id, window, cx)
@@ -427,6 +614,20 @@ impl HerdrWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        if self.chat_reader_focused(pane_id, window) {
+            return true;
+        }
+        // An inert mirror focus still belongs to the chat. Consume Paste so
+        // the terminal's action handler cannot paste beneath the overlay.
+        if self.chats.pane(pane_id).is_some_and(|pane| {
+            pane.session.transcript().read_only
+                && pane
+                    .read_only_focus
+                    .as_ref()
+                    .is_some_and(|focus| focus.is_focused(window))
+        }) {
+            return true;
+        }
         let Some(input) = self
             .chats
             .pane(pane_id)
@@ -525,6 +726,13 @@ impl HerdrWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self
+            .chats
+            .pane(pane_id)
+            .is_some_and(|pane| pane.session.transcript().read_only)
+        {
+            return;
+        }
         let host = match self.chats.pane(pane_id).map(|pane| &pane.target.route) {
             Some(super::Route::Ssh(host)) => host.clone(),
             Some(super::Route::Local) => return self.add_chat_files(pane_id, paths, window, cx),
@@ -591,6 +799,9 @@ impl HerdrWindow {
         let Some(pane) = self.chats.pane_mut(pane_id) else {
             return;
         };
+        if pane.session.transcript().read_only {
+            return;
+        }
         for path in paths {
             if pane.attachments.len() >= MAX_ATTACHMENTS {
                 pane.error = Some(format!("A prompt takes at most {MAX_ATTACHMENTS} files"));

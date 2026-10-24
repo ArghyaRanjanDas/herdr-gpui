@@ -2,7 +2,7 @@
 //! non-empty sections when opened.
 
 use super::super::summary::Summary;
-use crate::{HerdrWindow, config::corners, release_notes};
+use crate::{HerdrWindow, config::corners};
 use gpui::{prelude::*, *};
 use herdr_chat_protocol::Entry;
 
@@ -18,6 +18,7 @@ impl HerdrWindow {
         let theme = &self.theme;
         let small = px((self.chat_text_size() - 1.).max(10.));
         let pane_id = pane_id.to_owned();
+        let text_pane = pane_id.clone();
         let id = entry.id;
         let card = div()
             .id(("chat-summary", id.0))
@@ -55,29 +56,39 @@ impl HerdrWindow {
             )
             .map(|card| {
                 if expanded {
-                    card.child(release_notes::render(
+                    card.child(self.render_chat_lines(
                         "chat-summary",
+                        self.chat_text_scope(&pane_id, entry.id, 0),
                         &summary.lines,
-                        theme,
-                        &self.config.terminal,
+                        cx,
                     ))
                 } else {
-                    card.child(
-                        div()
-                            .min_w_0()
-                            .truncate()
-                            .text_size(small)
-                            .child(summary.gist.clone()),
-                    )
+                    card.child(div().min_w_0().truncate().text_size(small).child(
+                        self.render_chat_plain_text(
+                            self.chat_text_scope(&pane_id, entry.id, 0),
+                            (0, 0, 0),
+                            summary.gist.clone(),
+                            cx,
+                        ),
+                    ))
                 }
             })
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(move |this, event: &MouseUpEvent, _, cx| {
+                    if !expanded {
+                        this.click_chat_card_text(&text_pane, id, event.position, cx);
+                    }
+                }),
+            )
             .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
                 cx.stop_propagation();
                 if let Some(pane) = this.chats.pane_mut(&pane_id) {
                     if !pane.expanded.remove(&id) {
                         pane.expanded.insert(id);
                     }
+                    pane.refresh_text();
                     pane.remeasure(id);
                 }
                 cx.notify();

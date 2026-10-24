@@ -6,7 +6,7 @@
 //! works on a turn. The composer is a round field with the attach button
 //! before it and send inside it.
 
-use super::{super::column, ChatLayout, ComposerParts, Look, Row, Side, summary_row};
+use super::{ChatLayout, ComposerParts, Look, Row, Side, summary_row};
 use crate::config::mix;
 use gpui::{prelude::*, *};
 use herdr_chat_protocol::EntryKind;
@@ -29,7 +29,7 @@ pub(super) struct IMessage;
 impl ChatLayout for IMessage {
     fn row(&self, row: Row<'_>, look: &Look<'_>) -> AnyElement {
         let Some(side) = row.side() else {
-            return summary_row(row, GAP);
+            return summary_row(row, look, GAP);
         };
         let theme = look.theme;
         let id = row.entry.id.0;
@@ -38,14 +38,16 @@ impl ChatLayout for IMessage {
         let above = if row.speaker() { GAP } else { RUN_GAP };
         let small = px((look.text - 2.).max(10.));
         let body = match &row.entry.kind {
-            // Pictures and notices stand alone, as Messages draws photos
-            // and its own notes.
+            // Pictures and system notices stand alone; answered questions
+            // use the user's bubble like other retained user replies.
             EntryKind::Image { .. } => row.content,
-            EntryKind::Notice { .. } => div()
+            EntryKind::Notice { answers, .. } if answers.is_empty() => div()
                 .flex()
-                .justify_center()
+                .flex_col()
+                .items_center()
+                .min_w_0()
                 .text_size(small)
-                .child(row.content),
+                .child(row.content.max_w_full()),
             kind => {
                 let (fill, text) = match side {
                     Side::User => (user_blue(look), WHITE),
@@ -77,11 +79,15 @@ impl ChatLayout for IMessage {
                     });
                 div()
                     .flex()
-                    .when(side == Side::User, |row| row.justify_end())
+                    // Rich blocks need the available cross-axis width;
+                    // horizontal auto flex sizing collapses their percentages.
+                    .flex_col()
+                    .when(side == Side::User, |row| row.items_end())
+                    .when(side == Side::Agent, |row| row.items_start())
                     .child(bubble)
             }
         };
-        column(
+        look.column(
             div()
                 .id(("chat-entry", id))
                 .px(px(16.))
@@ -133,7 +139,7 @@ impl ChatLayout for IMessage {
         )
     }
 
-    fn turn(&self, text: &str, look: &Look<'_>) -> Div {
+    fn turn(&self, text: AnyElement, look: &Look<'_>) -> Div {
         div()
             .debug_selector(|| "chat-turn".into())
             .flex()
@@ -141,7 +147,7 @@ impl ChatLayout for IMessage {
             .text_size(px((look.text - 2.).max(10.)))
             .font_weight(FontWeight::SEMIBOLD)
             .text_color(rgb(look.theme.muted))
-            .child(text.to_owned())
+            .child(text)
     }
 
     fn composer(&self, parts: ComposerParts, look: &Look<'_>) -> Div {
