@@ -5,7 +5,7 @@
 mod error;
 mod state;
 pub(crate) use error::Error;
-pub(crate) use state::{Input, State, bounded_input};
+pub(crate) use state::{Form, Input, State, bounded_input};
 
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, rc::Rc};

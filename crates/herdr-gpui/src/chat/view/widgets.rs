@@ -4,16 +4,19 @@
 use super::super::{
     Target,
     prepared::{Body, Part},
-    widgets::{ActionMode, Component, Document, Input, Value, bounded_input, slider_value, snap},
+    widgets::{ActionMode, Component, Document, Form, Input, Value, bounded_input},
 };
 use crate::{
     HerdrWindow,
     config::{Theme, corners},
     search_input::{Changed, SearchInput},
 };
+use components::{Control, SliderRange};
 use gpui::{prelude::*, *};
 use herdr_chat_protocol::{Cursor, EntryId};
 use std::rc::Rc;
+
+mod components;
 
 #[derive(Clone)]
 struct Request {
@@ -98,6 +101,26 @@ fn field(theme: &Theme, title: &str, control: impl IntoElement) -> Div {
         .child(control)
 }
 
+/// One card's controls: what their edits carry, the card's local form once
+/// it is edited, and whether the transcript takes actions.
+struct Card<'a> {
+    request: Request,
+    form: Option<&'a Form>,
+    read_only: bool,
+}
+
+impl Card<'_> {
+    /// A control's current value: its edit, or the agent's default.
+    fn value(&self, component: &Component) -> Option<Value> {
+        component.field().map(|(id, default)| {
+            self.form
+                .and_then(|form| form.values.get(id))
+                .cloned()
+                .unwrap_or(default)
+        })
+    }
+}
+
 impl HerdrWindow {
     pub(in crate::chat) fn render_chat_widget(
         &self,
@@ -117,288 +140,22 @@ impl HerdrWindow {
             block,
             document: document.clone(),
         };
-        let theme = &self.theme;
-        let prefix = format!("widget-{pane_id}-{}-{block}", entry.0);
-        let form = pane.widgets.form(request.key(), document);
-        let read_only = pane.session.transcript().read_only;
-        let value = |component: &Component| {
-            component.field().map(|(id, default)| {
-                form.and_then(|form| form.values.get(id))
-                    .cloned()
-                    .unwrap_or(default)
-            })
+        let card = Card {
+            form: pane.widgets.form(request.key(), document),
+            read_only: pane.session.transcript().read_only,
+            request,
         };
-        let mut content = div().flex().flex_col().gap(px(16.)).min_w_0();
-        for (index, component) in document.components.iter().enumerate() {
-            let id = format!("{prefix}-{index}");
-            let part = match component {
-                Component::Text { text } => div().min_w_0().child(text.clone()),
-                Component::Card { title, text } => div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(6.))
-                    .p(px(12.))
-                    .rounded(px(corners::CONTROL))
-                    .bg(rgb(theme.background))
-                    .child(div().font_weight(FontWeight::SEMIBOLD).child(title.clone()))
-                    .child(div().text_color(rgb(theme.subtext())).child(text.clone())),
-                Component::Metric {
-                    label: title,
-                    value,
-                    detail,
-                } => div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(3.))
-                    .child(label(theme, title))
-                    .child(
-                        div()
-                            .text_size(px(self.chat_text_size() * 1.8))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(rgb(super::text_ink(theme.primary(), theme.surface)))
-                            .child(value.clone()),
-                    )
-                    .when(!detail.is_empty(), |metric| {
-                        metric.child(label(theme, detail))
-                    }),
-                Component::Choice {
-                    id: name,
-                    label: title,
-                    options,
-                    ..
-                } => {
-                    let selected = value(component);
-                    let choices = div().flex().flex_wrap().gap(px(6.)).children(
-                        options.iter().enumerate().map(|(option_index, option)| {
-                            let request = request.clone();
-                            let name = name.clone();
-                            let option_value = option.clone();
-                            button(
-                                theme,
-                                format!("{id}-{option_index}"),
-                                option.clone(),
-                                selected.as_ref() == Some(&Value::Text(option.clone())),
-                            )
-                            .on_click(cx.listener(
-                                move |this, _, _, cx| {
-                                    cx.stop_propagation();
-                                    this.change_widget(
-                                        &request,
-                                        &name,
-                                        Value::Text(option_value.clone()),
-                                        cx,
-                                    );
-                                },
-                            ))
-                        }),
-                    );
-                    field(theme, title, choices)
-                }
-                Component::Toggle {
-                    id: name,
-                    label: title,
-                    ..
-                } => {
-                    let on = matches!(value(component), Some(Value::Toggle(true)));
-                    let request = request.clone();
-                    let name = name.clone();
-                    field(
-                        theme,
-                        title,
-                        button(theme, id, if on { "On" } else { "Off" }.into(), on).on_click(
-                            cx.listener(move |this, _, _, cx| {
-                                cx.stop_propagation();
-                                this.change_widget(&request, &name, Value::Toggle(!on), cx);
-                            }),
-                        ),
-                    )
-                }
-                Component::Slider {
-                    id: name,
-                    label: title,
-                    min,
-                    max,
-                    step,
-                    value: initial,
-                } => {
-                    let current = match value(component) {
-                        Some(Value::Number(value)) => value,
-                        _ => *initial,
-                    };
-                    field(
-                        theme,
-                        title,
-                        self.render_widget_slider(
-                            &request,
-                            &id,
-                            name,
-                            current,
-                            (*min, *max, *step),
-                            cx,
-                        ),
-                    )
-                }
-                Component::Input {
-                    id: name,
-                    label: title,
-                    placeholder,
-                    ..
-                } => {
-                    let shown = match value(component) {
-                        Some(Value::Text(value)) => value,
-                        _ => String::new(),
-                    };
-                    let input = form
-                        .and_then(|form| form.inputs.get(name))
-                        .map(|input| input.entity.clone());
-                    let request = request.clone();
-                    let name = name.clone();
-                    let placeholder = placeholder.clone();
-                    // Let unhandled keys reach the native input handler;
-                    // chat's focus guards keep them out of the composer and terminal.
-                    let body = div()
-                        .id(SharedString::from(id.clone()))
-                        .debug_selector(move || id.clone())
-                        .min_h(px(36.))
-                        .px(px(9.))
-                        .py(px(6.))
-                        .min_w_0()
-                        .rounded(px(corners::CONTROL))
-                        .border_1()
-                        .border_color(rgb(theme.active))
-                        .bg(rgb(theme.background))
-                        .cursor_text()
-                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
-                    let body = match input {
-                        Some(input) => {
-                            let mut font = self.config.ui.clone();
-                            font.size = self.chat_text_size();
-                            input.update(cx, |input, cx| {
-                                input.set_appearance(font, self.theme.clone(), cx)
-                            });
-                            body.child(input)
-                        }
-                        None => body
-                            .text_color(rgb(if shown.is_empty() {
-                                theme.muted
-                            } else {
-                                theme.foreground
-                            }))
-                            .child(if shown.is_empty() {
-                                placeholder.clone()
-                            } else {
-                                shown
-                            })
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                cx.stop_propagation();
-                                this.edit_widget_input(&request, &name, &placeholder, window, cx);
-                            })),
-                    };
-                    field(theme, title, body)
-                }
-                Component::Table { columns, rows } => {
-                    let row = |cells: &[String], heading: bool| {
-                        div()
-                            .flex()
-                            .min_w_0()
-                            .bg(rgb(if heading { theme.active } else { theme.surface }))
-                            .children(cells.iter().map(|cell| {
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .p(px(8.))
-                                    .when(heading, |cell| cell.font_weight(FontWeight::SEMIBOLD))
-                                    .child(cell.clone())
-                            }))
-                    };
-                    div()
-                        .flex()
-                        .flex_col()
-                        .min_w_0()
-                        .rounded(px(corners::CONTROL))
-                        .overflow_hidden()
-                        .border_1()
-                        .border_color(rgb(theme.active))
-                        .child(row(columns, true))
-                        .children(rows.iter().map(|cells| row(cells, false)))
-                }
-                Component::Chart {
-                    label: title,
-                    points,
-                } => {
-                    let maximum = points
-                        .iter()
-                        .map(|point| point.value)
-                        .fold(0., f64::max)
-                        .max(1.);
-                    let bars = div()
-                        .flex()
-                        .flex_col()
-                        .gap(px(10.))
-                        .children(points.iter().map(|point| {
-                            div()
-                                .flex()
-                                .flex_col()
-                                .gap(px(4.))
-                                .child(
-                                    div()
-                                        .flex()
-                                        .justify_between()
-                                        .gap(px(8.))
-                                        .child(point.label.clone())
-                                        .child(point.value.to_string()),
-                                )
-                                .child(
-                                    div()
-                                        .h(px(7.))
-                                        .w_full()
-                                        .rounded_full()
-                                        .bg(rgb(theme.active))
-                                        .child(
-                                            div()
-                                                .h_full()
-                                                .w(relative((point.value / maximum) as f32))
-                                                .rounded_full()
-                                                .bg(rgb(theme.primary())),
-                                        ),
-                                )
-                        }));
-                    field(theme, title, bars)
-                }
-                Component::Action {
-                    label: title,
-                    prompt,
-                    mode,
-                } => {
-                    let request = request.clone();
-                    let prompt = prompt.clone();
-                    let mode = *mode;
-                    let caption = match mode {
-                        ActionMode::Draft => "Add to message",
-                        ActionMode::Send => "Send to agent",
-                    };
-                    let caption = if read_only {
-                        "Read-only transcript"
-                    } else {
-                        caption
-                    };
-                    div().flex().flex_col().gap(px(5.)).child(
-                        crate::accessibility::disabled(
-                            button(theme, id, format!("{title} · {caption}"), !read_only),
-                            read_only,
-                        )
-                        .when(read_only, |button| button.opacity(0.5))
-                        .when(!read_only, |button| {
-                            button.on_click(cx.listener(move |this, _, window, cx| {
-                                cx.stop_propagation();
-                                this.widget_action(&request, &prompt, mode, window, cx);
-                            }))
-                        }),
-                    )
-                }
-            };
-            content = content.child(part);
-        }
+        let prefix = format!("widget-{pane_id}-{}-{block}", entry.0);
+        let parts = document
+            .components
+            .iter()
+            .enumerate()
+            .map(|(index, component)| {
+                let id = format!("{prefix}-{index}");
+                self.render_widget_component(&card, id, component, cx)
+            })
+            .collect::<Vec<_>>();
+        let theme = &self.theme;
         div()
             .debug_selector(|| "chat-widget".into())
             .flex()
@@ -410,117 +167,112 @@ impl HerdrWindow {
             .border_1()
             .border_color(rgb(theme.active))
             .bg(rgb(theme.surface))
+            .child(self.render_widget_header(&document.title))
             .child(
                 div()
                     .flex()
                     .flex_col()
-                    .gap(px(4.))
-                    .child(
-                        div()
-                            .text_size(px(10.))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(rgb(super::text_ink(theme.primary(), theme.surface)))
-                            .child("INTERACTIVE"),
-                    )
-                    .when(!document.title.is_empty(), |header| {
-                        header.child(
-                            div()
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child(document.title.clone()),
-                        )
-                    }),
+                    .gap(px(16.))
+                    .min_w_0()
+                    .children(parts),
             )
-            .child(content)
     }
 
-    fn render_widget_slider(
-        &self,
-        request: &Request,
-        id: &str,
-        name: &str,
-        value: f64,
-        range: (f64, f64, f64),
-        cx: &mut Context<Self>,
-    ) -> Div {
+    fn render_widget_header(&self, title: &str) -> Div {
         let theme = &self.theme;
-        let (min, max, step) = range;
-        let fraction = ((value - min) / (max - min)).clamp(0., 1.) as f32;
-        let drag_id = id.to_owned();
-        let target_id = drag_id.clone();
-        let request_drag = request.clone();
-        let field_name = name.to_owned();
-        let track = div()
-            .id(SharedString::from(format!("{id}-track")))
-            .flex_1()
-            .min_w(px(60.))
-            .h(px(24.))
-            .flex()
-            .items_center()
-            .cursor_pointer()
-            .child(
-                div()
-                    .w_full()
-                    .h(px(6.))
-                    .rounded_full()
-                    .bg(rgb(theme.active))
-                    .child(
-                        div()
-                            .w(relative(fraction))
-                            .h_full()
-                            .rounded_full()
-                            .bg(rgb(theme.primary())),
-                    ),
-            )
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_drag(SliderDrag(drag_id), |_, _, _, cx| cx.new(|_| Empty))
-            .on_drag_move(
-                cx.listener(move |this, event: &DragMoveEvent<SliderDrag>, _, cx| {
-                    if event.drag(cx).0 != target_id {
-                        return;
-                    }
-                    let width = f32::from(event.bounds.size.width).max(1.);
-                    let fraction = f64::from(
-                        (f32::from(event.event.position.x) - f32::from(event.bounds.left()))
-                            / width,
-                    );
-                    this.change_widget(
-                        &request_drag,
-                        &field_name,
-                        Value::Number(slider_value(fraction, min, max, step)),
-                        cx,
-                    );
-                }),
-            );
-        let stepper = |suffix: &str, glyph: &str, delta: f64, cx: &mut Context<Self>| {
-            let request = request.clone();
-            let name = name.to_owned();
-            button(theme, format!("{id}-{suffix}"), glyph.into(), false).on_click(cx.listener(
-                move |this, _, _, cx| {
-                    cx.stop_propagation();
-                    this.change_widget(
-                        &request,
-                        &name,
-                        Value::Number(snap(value + delta, min, max, step)),
-                        cx,
-                    );
-                },
-            ))
-        };
         div()
             .flex()
             .flex_col()
             .gap(px(4.))
             .child(
                 div()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.))
-                    .child(stepper("minus", "−", -step, cx))
-                    .child(track)
-                    .child(stepper("plus", "+", step, cx))
-                    .child(div().min_w(px(44.)).text_right().child(value.to_string())),
+                    .text_size(px(10.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(rgb(super::text_ink(theme.primary(), theme.surface)))
+                    .child("INTERACTIVE"),
             )
-            .child(label(theme, &format!("{min} to {max}")))
+            .when(!title.is_empty(), |header| {
+                header.child(
+                    div()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(title.to_owned()),
+                )
+            })
+    }
+
+    fn render_widget_component(
+        &self,
+        card: &Card<'_>,
+        id: String,
+        component: &Component,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let value = card.value(component);
+        match component {
+            Component::Text { text } => div().min_w_0().child(text.clone()),
+            Component::Card { title, text } => self.widget_note(title, text),
+            Component::Metric {
+                label,
+                value,
+                detail,
+            } => self.widget_metric(label, value, detail),
+            Component::Choice {
+                id: name,
+                label,
+                options,
+                ..
+            } => self.widget_choice(card, Control { id, name, label }, options, value, cx),
+            Component::Toggle {
+                id: name, label, ..
+            } => {
+                let on = matches!(value, Some(Value::Toggle(true)));
+                self.widget_toggle(card, Control { id, name, label }, on, cx)
+            }
+            Component::Slider {
+                id: name,
+                label,
+                min,
+                max,
+                step,
+                value: initial,
+            } => {
+                let current = match value {
+                    Some(Value::Number(value)) => value,
+                    _ => *initial,
+                };
+                let range = SliderRange {
+                    min: *min,
+                    max: *max,
+                    step: *step,
+                };
+                self.widget_slider(
+                    &card.request,
+                    Control { id, name, label },
+                    current,
+                    range,
+                    cx,
+                )
+            }
+            Component::Input {
+                id: name,
+                label,
+                placeholder,
+                ..
+            } => {
+                let shown = match value {
+                    Some(Value::Text(value)) => value,
+                    _ => String::new(),
+                };
+                self.widget_input(card, Control { id, name, label }, placeholder, shown, cx)
+            }
+            Component::Table { columns, rows } => self.widget_table(columns, rows),
+            Component::Chart { label, points } => self.widget_chart(label, points),
+            Component::Action {
+                label,
+                prompt,
+                mode,
+            } => self.widget_action_button(card, id, label, prompt, *mode, cx),
+        }
     }
 
     fn change_widget(&mut self, request: &Request, id: &str, value: Value, cx: &mut Context<Self>) {

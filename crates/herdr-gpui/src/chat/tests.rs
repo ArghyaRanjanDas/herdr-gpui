@@ -46,6 +46,7 @@ mod tool_glance;
 mod typography;
 mod user_messages;
 mod visual;
+mod widget_toggle;
 mod widgets;
 mod width;
 mod zoom;
