@@ -230,6 +230,9 @@ checks complement screenshots and headless geometry tests.
 
 ## Dependencies
 
-TeX uses the MIT-licensed RaTeX engine crates pinned to 0.1.15. Markdown and
-syntax highlighting reuse the project's pulldown-cmark and Syntect dependencies.
+TeX uses the MIT-licensed RaTeX engine crates pinned to 0.1.15. Their bundled
+KaTeX fonts use the SIL Open Font License 1.1; release notices include the font
+license and upstream provenance separately from the engine's MIT license.
+Markdown and syntax highlighting reuse the project's pulldown-cmark and Syntect
+dependencies.
 The implementation extends the existing native ACP chat renderer.
