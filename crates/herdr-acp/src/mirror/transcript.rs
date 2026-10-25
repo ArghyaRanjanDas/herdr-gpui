@@ -24,10 +24,18 @@ mod codex_messages;
 mod notices;
 mod question_replies;
 
+use question_replies::QuestionKey;
+
 const TAIL: u64 = 8 * 1024 * 1024;
 const RECORD: usize = 1024 * 1024;
 const TEXT: usize = 128 * 1024;
 const BLOCKS: usize = 1024;
+/// The longest session, record, or tool call id kept.
+const MAX_ID: usize = 512;
+/// The longest tool title or reported option value kept.
+const MAX_TITLE: usize = 256;
+/// The longest working directory kept.
+const MAX_CWD: usize = 4096;
 
 /// The agents whose native logs can be projected.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -207,7 +215,7 @@ fn text(value: &Value) -> String {
 }
 
 struct Projection {
-    answered: HashMap<(String, usize), herdr_chat_protocol::QuestionAnswer>,
+    answered: HashMap<QuestionKey, herdr_chat_protocol::QuestionAnswer>,
     transcript: Transcript,
     tools: HashMap<String, usize>,
 }
@@ -230,7 +238,7 @@ impl Projection {
     }
 
     fn tool(&mut self, id: EntryId, call: &str, name: &str, input: &Value) {
-        if call.is_empty() || name.is_empty() || call.len() > 512 {
+        if call.is_empty() || name.is_empty() || call.len() > MAX_ID {
             return;
         }
         let input = input
@@ -244,7 +252,7 @@ impl Projection {
             kind: ToolKind::Other,
             locations: Vec::new(),
             status: ToolStatus::Pending,
-            title: limited(name, 256),
+            title: limited(name, MAX_TITLE),
         };
         self.tools
             .insert(call.to_owned(), self.transcript.entries.len());
@@ -292,13 +300,7 @@ impl Projection {
             "compacted" => {
                 let message = string(payload, "message");
                 self.transcript.truncated |= message.len() > TEXT;
-                let mut notice = notices::source("Context compacted".into(), message);
-                if message.is_empty()
-                    && let EntryKind::Notice { details, .. } = &mut notice
-                {
-                    *details = None;
-                }
-                self.push(id, notice);
+                self.push(id, notices::compacted(message));
                 if let Some(answers) = payload["retained_context"]["verified_answers"].as_array() {
                     self.transcript.truncated |= answers.len() >= BLOCKS;
                     for (index, answer) in answers.iter().take(BLOCKS - 1).enumerate() {
@@ -359,8 +361,8 @@ impl Projection {
             return;
         }
         self.transcript.session = Some(SessionInfo {
-            id: limited(id, 512),
-            cwd: (!cwd.is_empty()).then(|| limited(cwd, 4096)),
+            id: limited(id, MAX_ID),
+            cwd: (!cwd.is_empty()).then(|| limited(cwd, MAX_CWD)),
             title: None,
         });
     }
@@ -376,7 +378,7 @@ impl Projection {
             // Empty choices expose only the reported value, never a setter.
             kind: OptionKind::Select {
                 choices: Vec::new(),
-                current: limited(value, 256),
+                current: limited(value, MAX_TITLE),
             },
             name: id.into(),
         };
@@ -498,7 +500,7 @@ fn parse(agent: TranscriptAgent, bytes: &[u8], mut offset: u64) -> Transcript {
             TranscriptAgent::Codex => projection.codex(EntryId(base), &record),
             TranscriptAgent::Claude => {
                 let uuid = string(&record, "uuid");
-                if uuid.is_empty() || seen.insert(limited(uuid, 512)) {
+                if uuid.is_empty() || seen.insert(limited(uuid, MAX_ID)) {
                     projection.claude(EntryId(base), &record);
                 }
             }

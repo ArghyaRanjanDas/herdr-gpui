@@ -9,9 +9,17 @@ use herdr_chat_protocol::{
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::{MAX_ENTRIES, MAX_TRANSCRIPT_TEXT, Projection, TEXT, notices, string};
+use super::{MAX_ENTRIES, MAX_ID, MAX_TRANSCRIPT_TEXT, Projection, TEXT, notices, string};
 
 const TOOL: &str = "request_user_input_async";
+
+/// One question of an async request: the tool call that asked it and its
+/// position among that call's questions.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub(super) struct QuestionKey {
+    pub(super) call: String,
+    pub(super) index: usize,
+}
 
 #[derive(Deserialize)]
 struct Reply {
@@ -34,7 +42,10 @@ impl Projection {
         let pending = rows
             .into_iter()
             .enumerate()
-            .map(|(index, answer)| ((call.to_owned(), index), answer))
+            .map(|(index, answer)| {
+                let call = call.to_owned();
+                (QuestionKey { call, index }, answer)
+            })
             .filter(|(key, answer)| self.answered.get(key) != Some(answer))
             .collect::<Vec<_>>();
         if pending.is_empty() {
@@ -44,7 +55,7 @@ impl Projection {
             return Some(fallback());
         }
         let answers = pending.into_iter().map(|(_, answer)| answer).collect();
-        Some(answer_notice(answers, &source))
+        Some(notices::answered(answers, &source))
     }
 
     pub(super) fn question_reply(&mut self, record: &Value, content: &str) -> Option<EntryKind> {
@@ -67,7 +78,7 @@ impl Projection {
             if name != TOOL || reply.question.trim().is_empty() {
                 return None;
             }
-            let key = (call, index);
+            let key = QuestionKey { call, index };
             if answered.contains_key(&key) {
                 return None;
             }
@@ -76,7 +87,7 @@ impl Projection {
                 .get(&key)
                 .is_some_and(|answer| answer.question == reply.question);
             if !retained {
-                let position = *self.tools.get(&key.0)?;
+                let position = *self.tools.get(&key.call)?;
                 let EntryKind::Tool(tool) = &self.transcript.entries.get(position)?.kind else {
                     return None;
                 };
@@ -113,12 +124,12 @@ impl Projection {
             ));
         }
         let answers = pending.into_iter().map(|(_, answer)| answer).collect();
-        Some(answer_notice(answers, content))
+        Some(notices::answered(answers, content))
     }
 
-    fn remember_answers(&mut self, pending: &[((String, usize), QuestionAnswer)]) -> bool {
-        let size = |key: &(String, usize), answer: &QuestionAnswer| {
-            key.0.len() + answer.question.len() + answer.answer.len()
+    fn remember_answers(&mut self, pending: &[(QuestionKey, QuestionAnswer)]) -> bool {
+        let size = |key: &QuestionKey, answer: &QuestionAnswer| {
+            key.call.len() + answer.question.len() + answer.answer.len()
         };
         let mut bytes: usize = self
             .answered
@@ -142,26 +153,10 @@ impl Projection {
     }
 }
 
-fn answer_notice(answers: Vec<QuestionAnswer>, source: &str) -> EntryKind {
-    let mut notice = notices::source(
-        if answers.len() == 1 {
-            "Question answered"
-        } else {
-            "Questions answered"
-        }
-        .into(),
-        source,
-    );
-    if let EntryKind::Notice { answers: rows, .. } = &mut notice {
-        *rows = answers;
-    }
-    notice
-}
-
 fn retained_rows<'a>(value: &'a Value, order: &str) -> Option<(&'a str, Vec<QuestionAnswer>)> {
     let call = value["call_id"].as_str()?;
     if call.is_empty()
-        || call.len() > 512
+        || call.len() > MAX_ID
         || string(value, "turn_id").is_empty()
         || value[order].as_u64().is_none()
     {

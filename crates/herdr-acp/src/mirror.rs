@@ -20,7 +20,8 @@ use crate::{
     session::{ConnId, Input},
 };
 
-const POLL: Duration = Duration::from_secs(1);
+/// How often a watched transcript is checked for changes.
+pub(crate) const POLL: Duration = Duration::from_secs(1);
 const MAX_CLIENTS: usize = 8;
 
 pub(crate) fn run(options: MirrorOptions) -> anyhow::Result<()> {

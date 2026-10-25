@@ -228,7 +228,10 @@ fn consumed_question_ids_remain_bounded() {
         answered: (0..MAX_ENTRIES)
             .map(|index| {
                 (
-                    (format!("old{index}"), 0),
+                    QuestionKey {
+                        call: format!("old{index}"),
+                        index: 0,
+                    },
                     QuestionAnswer {
                         question: "Q".into(),
                         answer: "A".into(),
@@ -253,7 +256,10 @@ fn consumed_question_ids_remain_bounded() {
 fn remembered_question_text_has_a_separate_memory_bound() {
     let mut projection = Projection {
         answered: HashMap::from([(
-            ("old".into(), 0),
+            QuestionKey {
+                call: "old".into(),
+                index: 0,
+            },
             QuestionAnswer {
                 question: "Q".into(),
                 answer: "A".repeat(MAX_TRANSCRIPT_TEXT - 4),

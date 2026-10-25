@@ -1,6 +1,6 @@
 //! Native system origins, never keywords in a person's message, identify activity.
 
-use herdr_chat_protocol::{EntryKind, NoticeLevel};
+use herdr_chat_protocol::{EntryKind, NoticeLevel, QuestionAnswer};
 use serde_json::Value;
 
 use super::{TEXT, limited, string};
@@ -35,17 +35,41 @@ pub(super) fn project(record: &Value, content: &str) -> Option<EntryKind> {
     Some(source(text, content))
 }
 
+/// A notice whose details show the native `content` it stands for.
 pub(super) fn source(text: String, content: &str) -> EntryKind {
-    let details = if content.len() > TEXT {
+    notice(text, Some(content), Vec::new())
+}
+
+/// A compacted context, with details only when Codex kept a summary.
+pub(super) fn compacted(message: &str) -> EntryKind {
+    let details = (!message.is_empty()).then_some(message);
+    notice("Context compacted".into(), details, Vec::new())
+}
+
+/// Answered questions, with the native record that answered them.
+pub(super) fn answered(answers: Vec<QuestionAnswer>, content: &str) -> EntryKind {
+    let text = if answers.len() == 1 {
+        "Question answered"
+    } else {
+        "Questions answered"
+    };
+    notice(text.into(), Some(content), answers)
+}
+
+fn notice(text: String, content: Option<&str>, answers: Vec<QuestionAnswer>) -> EntryKind {
+    EntryKind::Notice {
+        answers,
+        details: content.map(details),
+        level: NoticeLevel::Info,
+        text,
+    }
+}
+
+fn details(content: &str) -> String {
+    if content.len() > TEXT {
         format!("{}{CUT}", limited(content, TEXT - CUT.len()))
     } else {
         content.to_owned()
-    };
-    EntryKind::Notice {
-        answers: Vec::new(),
-        details: Some(details),
-        level: NoticeLevel::Info,
-        text,
     }
 }
 
