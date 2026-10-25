@@ -2,9 +2,8 @@
 //! Codex process can hold several child-agent rollouts: newest-file guessing
 //! would silently show the wrong conversation.
 
-use super::Options;
+use super::{Error, Options, Result};
 use crate::{agents::Agent, mirror::transcript::Source};
-use anyhow::{Context as _, bail, ensure};
 use serde_json::Value;
 use std::{
     fs::{self, File},
@@ -16,6 +15,8 @@ const HEADER: u64 = 512 * 1024;
 const MAX_FDS: usize = 2048;
 const MAX_PROJECTS: usize = 512;
 const MAX_DAY_ENTRIES: usize = 4096;
+/// Bytes of `/proc/PID/stat` read; the start time is its 22nd field.
+const MAX_STAT: u64 = 8192;
 
 pub(super) struct Identity {
     pub(super) path: PathBuf,
@@ -28,24 +29,18 @@ pub(super) struct Identity {
 }
 
 impl Identity {
-    pub(super) fn open(options: &Options) -> anyhow::Result<Self> {
-        ensure!(
-            cfg!(target_os = "linux"),
-            "existing terminal observation requires Linux process metadata"
-        );
+    pub(super) fn open(options: &Options) -> Result<Self> {
+        if !cfg!(target_os = "linux") {
+            return Err(Error::Unsupported);
+        }
         Self::at(options, Path::new("/proc"), std::env::home_dir().as_deref())
     }
 
-    pub(super) fn at(
-        options: &Options,
-        proc_root: &Path,
-        home: Option<&Path>,
-    ) -> anyhow::Result<Self> {
+    pub(super) fn at(options: &Options, proc_root: &Path, home: Option<&Path>) -> Result<Self> {
         let process = proc_root.join(options.pid.to_string());
-        ensure!(
-            start_ticks(&process)? == options.started,
-            "the original agent process has changed"
-        );
+        if start_ticks(&process)? != options.started {
+            return Err(Error::ProcessChanged);
+        }
         let cwd = fs::read_link(process.join("cwd")).ok();
         let mut candidates = Vec::new();
         if let Ok(entries) = fs::read_dir(process.join("fd")) {
@@ -84,13 +79,7 @@ impl Identity {
             .into_iter()
             .filter(|path| matches_session(path, options).unwrap_or(false))
             .collect();
-        ensure!(
-            matches.len() == 1,
-            "cannot uniquely identify the running agent's transcript"
-        );
-        let Some(path) = matches.into_iter().next() else {
-            bail!("no matching transcript")
-        };
+        let [path] = <[PathBuf; 1]>::try_from(matches).map_err(|_| Error::Ambiguous)?;
         let identity = Self {
             file: File::open(&path)?,
             agent: options.agent,
@@ -104,38 +93,29 @@ impl Identity {
         Ok(identity)
     }
 
-    pub(super) fn check(&self) -> anyhow::Result<()> {
-        ensure!(
-            self.process_matches()?,
-            "the original agent exited or was replaced"
-        );
+    pub(super) fn check(&self) -> Result<()> {
+        if !self.process_matches()? {
+            return Err(Error::Exited);
+        }
         #[cfg(unix)]
         {
             use std::os::unix::fs::MetadataExt;
             let pinned = self.file.metadata()?;
             let current = fs::metadata(&self.path)?;
-            ensure!(
-                (pinned.dev(), pinned.ino()) == (current.dev(), current.ino()),
-                "the transcript rotated; reconnect to verify its new file"
-            );
+            if (pinned.dev(), pinned.ino()) != (current.dev(), current.ino()) {
+                return Err(Error::Rotated);
+            }
         }
-        ensure!(
-            matches_file(self.file.try_clone()?, self.agent, &self.session)?,
-            "the pinned transcript no longer describes the original session"
-        );
+        if !matches_file(self.file.try_clone()?, self.agent, &self.session)? {
+            return Err(Error::SessionChanged);
+        }
         Ok(())
     }
 
-    pub(super) fn process_matches(&self) -> anyhow::Result<bool> {
+    pub(super) fn process_matches(&self) -> Result<bool> {
         match start_ticks(&self.process) {
             Ok(ticks) => Ok(ticks == self.started),
-            Err(error)
-                if error
-                    .downcast_ref::<io::Error>()
-                    .is_some_and(|error| error.kind() == io::ErrorKind::NotFound) =>
-            {
-                Ok(false)
-            }
+            Err(Error::Io(error)) if error.kind() == io::ErrorKind::NotFound => Ok(false),
             Err(error) => Err(error),
         }
     }
@@ -151,11 +131,7 @@ impl Identity {
 
 /// Read only the known config-directory override from the verified process.
 /// Other environment variables never leave this bounded buffer or get logged.
-fn config_directory(
-    process: &Path,
-    home: Option<&Path>,
-    agent: Agent,
-) -> io::Result<Option<PathBuf>> {
+fn config_directory(process: &Path, home: Option<&Path>, agent: Agent) -> Result<Option<PathBuf>> {
     const MAX_ENVIRONMENT: u64 = 128 * 1024;
     let (variable, default): (&[u8], &str) = match agent {
         Agent::Claude => (b"CLAUDE_CONFIG_DIR=", ".claude"),
@@ -167,14 +143,11 @@ fn config_directory(
         Ok(file) => {
             file.take(MAX_ENVIRONMENT + 1).read_to_end(&mut bytes)?;
             if bytes.len() > MAX_ENVIRONMENT as usize {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "process environment exceeds the observation limit",
-                ));
+                return Err(Error::EnvironmentTooLarge);
             }
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error),
+        Err(error) => return Err(error.into()),
     }
     let custom = bytes
         .split(|byte| *byte == 0)
@@ -183,12 +156,7 @@ fn config_directory(
     let Some(custom) = custom else {
         return Ok(home.map(|home| home.join(default)));
     };
-    let custom = std::str::from_utf8(custom).map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            "agent config directory is not valid UTF-8",
-        )
-    })?;
+    let custom = std::str::from_utf8(custom).map_err(|_| Error::ConfigDirNotUtf8)?;
     let path = PathBuf::from(custom);
     let path = if path.is_absolute() {
         path
@@ -198,22 +166,16 @@ fn config_directory(
     Ok(Some(path))
 }
 
-fn codex_rollouts(
-    process: &Path,
-    home: Option<&Path>,
-    options: &Options,
-) -> anyhow::Result<Vec<PathBuf>> {
+fn codex_rollouts(process: &Path, home: Option<&Path>, options: &Options) -> Result<Vec<PathBuf>> {
     let uuid = uuid::Uuid::parse_str(&options.session)?;
-    ensure!(
-        uuid.get_version() == Some(uuid::Version::SortRand),
-        "Codex transcript lookup without a descriptor requires a UUIDv7 session"
-    );
-    let (seconds, nanos) = uuid
-        .get_timestamp()
-        .context("Codex session has no creation timestamp")?
-        .to_unix();
-    let date = chrono::DateTime::from_timestamp(i64::try_from(seconds)?, nanos)
-        .context("Codex session creation timestamp is out of range")?
+    if uuid.get_version() != Some(uuid::Version::SortRand) {
+        return Err(Error::NotUuidV7);
+    }
+    let (seconds, nanos) = uuid.get_timestamp().ok_or(Error::NoTimestamp)?.to_unix();
+    let date = i64::try_from(seconds)
+        .ok()
+        .and_then(|seconds| chrono::DateTime::from_timestamp(seconds, nanos))
+        .ok_or(Error::TimestampRange)?
         .date_naive();
     let Some(base) = config_directory(process, home, Agent::Codex)? else {
         return Ok(Vec::new());
@@ -233,10 +195,9 @@ fn codex_rollouts(
             Err(error) => return Err(error.into()),
         };
         for (index, entry) in entries.enumerate() {
-            ensure!(
-                index < MAX_DAY_ENTRIES,
-                "Codex transcript directory exceeds the observation limit"
-            );
+            if index >= MAX_DAY_ENTRIES {
+                return Err(Error::DayTooLarge);
+            }
             let entry = entry?;
             let path = entry.path();
             if candidate_name(&path, options) && entry.file_type()?.is_file() {
@@ -247,18 +208,18 @@ fn codex_rollouts(
     Ok(candidates)
 }
 
-fn start_ticks(process: &Path) -> anyhow::Result<u64> {
+fn start_ticks(process: &Path) -> Result<u64> {
     let mut stat = String::new();
     File::open(process.join("stat"))?
-        .take(8192)
+        .take(MAX_STAT)
         .read_to_string(&mut stat)?;
     // comm may contain spaces and parentheses; fields resume after its last ')'.
-    let rest = stat.rsplit_once(')').context("invalid process stat")?.1;
+    let rest = stat.rsplit_once(')').ok_or(Error::InvalidStat)?.1;
     rest.split_whitespace()
         .nth(19)
-        .context("missing process start time")?
+        .ok_or(Error::MissingStartTime)?
         .parse()
-        .context("invalid process start time")
+        .map_err(Error::InvalidStartTime)
 }
 
 fn candidate_name(path: &Path, options: &Options) -> bool {
@@ -275,6 +236,8 @@ fn candidate_name(path: &Path, options: &Options) -> bool {
 }
 
 fn matches_session(path: &Path, options: &Options) -> io::Result<bool> {
+    // Checked before opening, since opening a FIFO can block; `matches_file`
+    // checks the opened descriptor again in case the path was replaced.
     if !fs::metadata(path)?.is_file() {
         return Ok(false);
     }

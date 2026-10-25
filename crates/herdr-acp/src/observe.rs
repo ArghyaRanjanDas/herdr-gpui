@@ -2,9 +2,12 @@
 //! input. This child only projects history; closing the GUI stops this child,
 //! never the agent. No persistent sidecar, replacement session, or socket.
 
+mod error;
 mod identity;
 #[cfg(test)]
 mod tests;
+
+pub use error::{Error, Result};
 
 use crate::{
     agents::Agent,

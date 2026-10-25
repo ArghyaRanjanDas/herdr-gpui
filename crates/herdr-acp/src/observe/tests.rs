@@ -4,6 +4,7 @@ use super::*;
 use std::{fs, path::Path};
 
 mod codex_fallback;
+mod errors;
 
 const SESSION: &str = "01234567-89ab-4cde-8123-456789abcdef";
 
