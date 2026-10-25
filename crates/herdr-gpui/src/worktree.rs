@@ -9,6 +9,11 @@ const PREFIX: &str = "worktree";
 /// Longest slug this client proposes for a branch, so a long name or issue
 /// title cannot produce an unusable checkout directory.
 const SLUG_LIMIT: usize = 60;
+/// Characters Git refuses anywhere in a branch name besides whitespace and
+/// control characters. The branch field types each as a dash.
+const REFUSED: [char; 7] = ['~', '^', ':', '?', '*', '[', '\\'];
+/// The ending Git refuses on any component of a branch name.
+const LOCK: &str = ".lock";
 
 /// Validate a literal branch name, without resolving checkout shorthand or
 /// consulting a repository (which may live on a remote endpoint).
@@ -21,11 +26,11 @@ pub(super) fn validate_branch(branch: &str) -> crate::Result<()> {
         || branch.contains("..")
         || branch.contains("@{")
         || branch
-            .bytes()
-            .any(|byte| byte <= b' ' || byte == 0x7f || b"~^:?*[\\".contains(&byte))
+            .chars()
+            .any(|ch| ch <= ' ' || ch == '\x7f' || REFUSED.contains(&ch))
         || branch
             .split('/')
-            .any(|part| part.is_empty() || part.starts_with('.') || part.ends_with(".lock"));
+            .any(|part| part.is_empty() || part.starts_with('.') || part.ends_with(LOCK));
     if invalid {
         return Err(crate::Error::InvalidBranchName);
     }
@@ -126,6 +131,14 @@ pub(super) fn checkout_preview(root: &str, repo: &str, branch: &str) -> String {
 }
 
 pub(super) use herdr_github::checkout::{checkout_root, left_checkout};
+
+mod typed;
+pub(crate) use typed::{Edit, format_edit};
+
+#[cfg(test)]
+mod git_check;
+#[cfg(test)]
+pub(crate) use git_check::git_accepts;
 
 #[cfg(test)]
 mod tests {

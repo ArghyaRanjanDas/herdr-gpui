@@ -127,7 +127,7 @@ impl EntityInputHandler for HerdrWindow {
     }
     fn unmark_text(&mut self, _: &mut Window, cx: &mut Context<Self>) {
         if let Some(input) = self.menu.input.as_mut() {
-            input.marked = None;
+            input.unmark();
         }
         self.marked.clear();
         self.marked_selection = None;

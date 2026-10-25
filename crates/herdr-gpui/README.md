@@ -2340,7 +2340,12 @@ self-managed host, lists its open issues (not yet its merge requests), read
 with `GITLAB_TOKEN` or `GITLAB_ACCESS_TOKEN` when `GITLAB_HOST` names that host
 (gitlab.com by default), else with the GitLab CLI's sign-in (`glab auth
 login`), and sent only over HTTPS; public projects need neither, and an
-`http://` remote is read without one. GitHub Enterprise is listed as not
+`http://` remote is read without one. A remote on an SSH host of its own, such
+as `git@gitlab-ssh.example.com:group/project.git` for an instance served at
+`gitlab.example.com`, is read from the instance whose `ssh_host` the GitLab
+CLI's config names it, at that instance's `api_host` and `api_protocol`, with
+its token (`glab config set ssh_host gitlab-ssh.example.com --host
+gitlab.example.com`). GitHub Enterprise is listed as not
 supported yet. The window button in the tab's header moves the view into
 a window of its own.
 
@@ -3950,8 +3955,14 @@ Ctrl+Shift+U is left unbound for
   a workspace. Cmd-N opens the New worktree dialog for the focused workspace
   (for a linked worktree, through its repository's main checkout, starting from
   the linked worktree's branch). The dialog opens on
-  its Branch field with the proposal selected, so typing replaces it; Tab
-  back to the form returns there. The Name field is optional: left empty,
+  its Branch field with the proposal selected, so typing replaces it. Tab and
+  Shift-Tab move between the search, Name, and Branch fields, selecting the
+  field's text, and Ctrl-Tab and Ctrl-Shift-Tab step through the dialog's
+  tabs; in a listing, Tab moves through its rows. The Branch field formats
+  what is typed, pasted, or committed by an input method: whitespace and
+  characters Git refuses (`~^:?*[\`) become one dash, and sequences Git
+  refuses, such as `..`, `@{`, `//`, or a leading dash, never form, so the
+  branch stays one Git accepts. The Name field is optional: left empty,
   the daemon picks the workspace name; anything
   typed is sent as the new workspace's label. The proposed branch follows the
   name, so "Fix login" proposes `worktree/fix-login`, until the Branch field

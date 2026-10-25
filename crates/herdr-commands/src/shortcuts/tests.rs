@@ -3,6 +3,8 @@ use crate::{COMMANDS, Command};
 use gpui::{Keystroke, Modifiers};
 use std::collections::HashMap;
 
+mod toggle_status_bar;
+
 type Profile = fn(Command) -> &'static [&'static str];
 
 fn parse(shortcut: &str) -> Keystroke {

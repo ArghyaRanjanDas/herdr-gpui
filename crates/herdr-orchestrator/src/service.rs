@@ -19,6 +19,7 @@ use herdr_client::ConnectTarget;
 use herdr_github::Tokens;
 use herdr_remote::teleport::{AgentKind, Host};
 use secrecy::SecretString;
+use sources::{recognize, statuses};
 use std::{
     collections::{HashMap, VecDeque},
     path::PathBuf,
@@ -29,6 +30,10 @@ use std::{
     },
     time::{Duration, Instant},
 };
+
+mod sources;
+
+pub use sources::sources;
 
 /// How often other applications' writes (agent-launcher's runs) are looked for.
 const RELOAD: Duration = Duration::from_secs(5);
@@ -299,9 +304,10 @@ struct Worker {
     uncached: HashMap<SourceKey, Vec<Item>>,
     /// Where each GitHub source's next incremental sync continues.
     resume: HashMap<SourceKey, github::Resume>,
-    /// The GitLab token, once looked up; Refresh looks again, so a new
-    /// `glab auth login` is picked up without reopening the view.
-    gitlab_token: Option<Option<SecretString>>,
+    /// The GitLab token, once looked up, and the instance it is for; Refresh
+    /// looks again, so a new `glab auth login` is picked up without
+    /// reopening the view.
+    gitlab_token: Option<(String, Option<SecretString>)>,
     cooldown: Option<Duration>,
 }
 
@@ -501,7 +507,7 @@ impl Worker {
     fn found(&mut self, host: &Host, detected: Result<(RepoInfo, Extras)>) -> Result<()> {
         let cache = self.cache(false);
         let key = cache_key(&self.request.target, &self.request.checkout);
-        let (info, extras) = match detected {
+        let (mut info, extras) = match detected {
             Ok(found) => found,
             Err(Error::Script { operation, source }) if source.host_unreached() => {
                 self.unreached = true;
@@ -522,6 +528,7 @@ impl Worker {
                 return Err(error);
             }
         };
+        recognize(&mut info, gitlab::cli_hosts::read);
         if std::mem::take(&mut self.unreached) {
             self.snapshot.error = None;
         }
@@ -602,17 +609,7 @@ impl Worker {
         }
         let store = Store::open(&path)?;
         self.snapshot.access = Some(store.access());
-        self.snapshot.sources = sources(&info)
-            .into_iter()
-            .map(|(key, supported)| SourceStatus {
-                key,
-                state: if supported {
-                    SyncState::Syncing
-                } else {
-                    SyncState::Unsupported
-                },
-            })
-            .collect();
+        self.snapshot.sources = statuses(&info);
         self.site = Some(Site {
             host: host.clone(),
             target: self.request.target.clone(),
@@ -684,6 +681,7 @@ impl Worker {
                 return;
             }
         }
+        self.recognize(gitlab::cli_hosts::read);
         let Some(info) = self.snapshot.repo.clone() else {
             return;
         };
@@ -865,9 +863,6 @@ impl Worker {
                 })
             }
             Provider::Gitlab => {
-                let token = self
-                    .gitlab_token
-                    .get_or_insert_with(|| gitlab::token(&key.host));
                 let scheme = self
                     .snapshot
                     .repo
@@ -877,11 +872,24 @@ impl Worker {
                     .map_or(gitlab::Scheme::Https, |remote| {
                         gitlab::Scheme::of_remote(&remote.url)
                     });
+                let api = gitlab::Api::resolve(&key.host, scheme);
+                if self
+                    .gitlab_token
+                    .as_ref()
+                    .is_none_or(|(instance, _)| *instance != api.instance)
+                {
+                    let token = gitlab::token(&api.instance);
+                    self.gitlab_token = Some((api.instance.clone(), token));
+                }
+                let token = self
+                    .gitlab_token
+                    .as_ref()
+                    .and_then(|(_, token)| token.as_ref());
                 let previous = store.checkpoint(key)?;
                 let cancelled = &self.cancelled;
                 let listing = gitlab::sync(
-                    (key, scheme),
-                    token.as_ref(),
+                    (key, &api),
+                    token,
                     previous.as_ref(),
                     &|| cancelled.load(Ordering::Relaxed),
                     &mut self.cooldown,
@@ -905,6 +913,18 @@ impl Worker {
                     count,
                 })
             }
+        }
+    }
+
+    /// Reads the shown remote as GitLab once glab knows its host, such as
+    /// through an `ssh_host` added after the repository was found.
+    fn recognize(&mut self, cli: impl FnOnce() -> Vec<gitlab::cli_hosts::CliHost>) {
+        let Some(mut info) = self.snapshot.repo.clone() else {
+            return;
+        };
+        if recognize(&mut info, cli) {
+            self.snapshot.sources = statuses(&info);
+            self.snapshot.repo = Some(info);
         }
     }
 
@@ -957,21 +977,5 @@ fn agents(found: &[String]) -> Vec<AgentKind> {
     AgentKind::ALL
         .into_iter()
         .filter(|kind| found.iter().any(|binary| binary == kind.binary()))
-        .collect()
-}
-
-/// The sources a repository has, and whether this build can read each.
-pub fn sources(info: &RepoInfo) -> Vec<(SourceKey, bool)> {
-    let remote = info.remote.as_ref().map(|remote| {
-        let supported = match remote.source.provider {
-            Provider::Github => remote.source.host == "github.com",
-            Provider::Gitlab => true,
-            Provider::Beads => false,
-        };
-        (remote.source.clone(), supported)
-    });
-    remote
-        .into_iter()
-        .chain(info.beads_source().map(|key| (key, true)))
         .collect()
 }

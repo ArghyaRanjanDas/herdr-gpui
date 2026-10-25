@@ -4,6 +4,11 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use super::{HerdrWindow, input::ViewInputHandler, words};
 
+/// Rewrites an edit, given the text left of the range it replaces, the text
+/// typed, and the text right of the range: what to insert there, and how the
+/// start of the text after it changes, which a deletion can.
+type Format = fn(&str, &str, &str) -> crate::worktree::Edit;
+
 // Byte offsets internally; only the platform input boundary uses UTF-16.
 #[derive(Default)]
 pub(super) struct DialogInput {
@@ -14,6 +19,12 @@ pub(super) struct DialogInput {
     pub bounds: Bounds<Pixels>,
     line: Option<ShapedLine>,
     scroll: Pixels,
+    /// Rewrites each edit. Composition is shown as typed and only its commit
+    /// is rewritten, so the IME is never fought mid-word.
+    format: Option<Format>,
+    /// What a screen reader calls the field, when a caption beside it
+    /// names it rather than the field itself.
+    pub label: Option<&'static str>,
 }
 
 impl DialogInput {
@@ -22,6 +33,16 @@ impl DialogInput {
             selection: 0..text.len(),
             text,
             ..Self::default()
+        }
+    }
+
+    /// The new worktree dialog's branch field, which keeps out what Git
+    /// refuses as it is typed.
+    pub fn branch(text: String) -> Self {
+        Self {
+            format: Some(crate::worktree::format_edit),
+            label: Some("Branch"),
+            ..Self::new(text)
         }
     }
 
@@ -46,15 +67,38 @@ impl DialogInput {
             .map(|r| self.range_from_utf16(r))
             .or_else(|| self.marked.clone())
             .unwrap_or_else(|| self.selection.clone());
-        let text: String = text
-            .chars()
-            .filter(|c| !c.is_control())
-            .take(4096)
-            .collect();
-        if self.text.len() - range.len() + text.len() > 16384 {
+        let formatted = self.format.filter(|_| !marked).map(|format| {
+            // Cut to length first, so the cut cannot undo how it was joined.
+            let text: String = text.chars().take(4096).collect();
+            format(&self.text[..range.start], &text, &self.text[range.end..])
+        });
+        let (text, range, after) = match formatted {
+            // Text that is all left out changes nothing, so a stray key does
+            // not also delete the selection it was typed over; a composition
+            // being committed is still removed.
+            Some(edit) if edit.inserted.is_empty() && !text.is_empty() && self.marked.is_none() => {
+                return;
+            }
+            // What follows the range can give way to what now comes before it.
+            // The formatter has already left out control characters.
+            Some(edit) => {
+                let end = range.end + edit.replaced;
+                (edit.inserted, range.start..end, edit.after)
+            }
+            None => (
+                text.chars()
+                    .filter(|c| !c.is_control())
+                    .take(4096)
+                    .collect(),
+                range,
+                String::new(),
+            ),
+        };
+        if self.text.len() - range.len() + text.len() + after.len() > 16384 {
             return;
         }
-        self.text.replace_range(range.clone(), &text);
+        self.text
+            .replace_range(range.clone(), &format!("{text}{after}"));
         let end = range.start + text.len();
         self.selection = if let Some(selected) = selected {
             let start = byte_offset(&text, selected.start);
@@ -65,6 +109,22 @@ impl DialogInput {
         self.reversed = false;
         self.marked = (marked && !text.is_empty()).then_some(range.start..end);
         self.line = None;
+    }
+
+    /// Ends a composition where it stands, as when the platform unmarks the
+    /// text rather than committing it. A formatted field commits the text as
+    /// if it had been typed, so it is kept out like any other edit.
+    pub fn unmark(&mut self) {
+        let Some(range) = self.marked.clone() else {
+            return;
+        };
+        if self.format.is_none() {
+            self.marked = None;
+            return;
+        }
+        let text = self.text[range].to_owned();
+        self.replace(None, &text, false, None);
+        self.marked = None;
     }
 
     fn cursor(&self) -> usize {
@@ -228,6 +288,10 @@ impl HerdrWindow {
                     .map(|input| SharedString::from(input.text.clone()))
                     .unwrap_or_default(),
             )
+            .when_some(
+                self.menu.input.as_ref().and_then(|input| input.label),
+                |field, label| field.aria_label(label),
+            )
             .w_full()
             .h(px(self.config.ui.line_height() + 10.))
             .px(px(6.))
@@ -348,6 +412,7 @@ mod tests {
     use super::DialogInput;
     use gpui::Keystroke;
 
+    mod branch_format;
     mod word_keys;
 
     #[test]

@@ -300,7 +300,7 @@ impl HerdrWindow {
             usage: Default::default(),
             version_notice_shown: false,
             viewport_width: 0.,
-            wake: endpoint::WakeClock::new(std::time::Instant::now(), std::time::SystemTime::now()),
+            wake: endpoint::WakeClock::now(),
             wheel: WheelAccumulator::default(),
             workspace_drag: None,
             worktree_script: None,

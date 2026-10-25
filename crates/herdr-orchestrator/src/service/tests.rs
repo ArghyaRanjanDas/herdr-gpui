@@ -28,6 +28,7 @@ fn closing_the_view_does_not_cancel_an_accepted_action() {
 }
 
 mod extras;
+mod glab_mapping;
 mod unreached;
 
 /// A worker for a fresh repository in `dir`, with its repository found,

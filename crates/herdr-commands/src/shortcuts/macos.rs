@@ -40,6 +40,7 @@ pub(super) fn defaults(command: Command) -> &'static [&'static str] {
         TabNumber(8) => &["cmd-8"],
         TabNumber(9) => &["cmd-9"],
         ToggleSidebar => &["cmd-b"],
+        ToggleStatusBar => &["cmd-alt-b"],
         // F6 alone is Windows' region key; on a Mac it stays the app's.
         FocusNextRegion => &["cmd-f6"],
         FocusPreviousRegion => &["cmd-shift-f6"],
