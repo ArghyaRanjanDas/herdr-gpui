@@ -1,4 +1,5 @@
 use super::*;
+use crate::chat::rich::{MAX_CODE_LINE_CHARS, TAB_WIDTH};
 
 #[core::prelude::v1::test]
 fn tabs_keep_code_indentation_and_unicode_highlight_offsets() {
@@ -25,7 +26,7 @@ fn tabs_keep_code_indentation_and_unicode_highlight_offsets() {
 
 #[core::prelude::v1::test]
 fn clipped_code_keeps_prefix_highlights_and_reports_its_limit() {
-    let raw = format!("\t{}tail", "α".repeat(MAX_LINE_CHARS - 1));
+    let raw = format!("\t{}tail", "α".repeat(MAX_CODE_LINE_CHARS - 1));
     let line = code_line(
         &raw,
         &[Span {
@@ -35,7 +36,10 @@ fn clipped_code_keeps_prefix_highlights_and_reports_its_limit() {
         }],
     );
     assert!(line.truncated);
-    assert_eq!(line.text.chars().count(), MAX_LINE_CHARS + TAB_WIDTH - 1);
+    assert_eq!(
+        line.text.chars().count(),
+        MAX_CODE_LINE_CHARS + TAB_WIDTH - 1
+    );
     assert!(line.text.starts_with("    α"));
     assert!(line.text.ends_with('α'));
     assert_eq!(
@@ -46,7 +50,7 @@ fn clipped_code_keeps_prefix_highlights_and_reports_its_limit() {
             token: Token::String
         }]
     );
-    assert!(!code_line(&"x".repeat(MAX_LINE_CHARS), &[]).truncated);
+    assert!(!code_line(&"x".repeat(MAX_CODE_LINE_CHARS), &[]).truncated);
     assert!(
         code_line(
             "α",

@@ -10,9 +10,6 @@ use std::ops::Range;
 /// Reserved parts for the label and original record around historical Q&A.
 pub(crate) const LABEL_PART: usize = usize::MAX - 1;
 pub(crate) const DETAILS_PART: usize = usize::MAX;
-pub(crate) const MAX_CODE_LINES: usize = 512;
-pub(crate) const MAX_CODE_LINE_CHARS: usize = 4_000;
-pub(crate) const TAB_WIDTH: usize = 4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct Position {

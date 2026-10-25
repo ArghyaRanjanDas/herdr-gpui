@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::chat::prepared::{Body, Part, Prepared};
+use crate::chat::rich::{MAX_CODE_LINE_CHARS, MAX_CODE_LINES};
 use herdr_chat_protocol::{Entry, EntryKind, NoticeLevel, QuestionAnswer, Transcript};
 use std::{collections::HashMap, rc::Rc, sync::Arc};
 
@@ -108,7 +109,7 @@ fn code_tab_map_preserves_original_source_and_unicode() {
     let first = caret(document, 1, 0, 0, 0, 2);
     let segment = document.segment(first.key).unwrap();
     assert_eq!(segment.text(), "α   b");
-    assert_eq!(segment.display_offset(3), Some(5));
+    assert_eq!(segment.code().unwrap().shown(3), Some(5));
     assert_eq!(segment.source_offset(4), 2);
     let mut selection = Selection::default();
     selection.press(document, first, 1, false);

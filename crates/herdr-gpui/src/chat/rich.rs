@@ -1,10 +1,14 @@
 //! Structured Markdown kept separately from layout. Parsing is bounded by
 //! the message limit; math rasterization and grammar parsing use Visuals' workers.
 
+mod code;
 mod math;
 mod math_input;
 mod parse;
 
+#[cfg(test)]
+pub(super) use code::MAX_CODE_LINE_CHARS;
+pub(super) use code::{CodeText, MAX_CODE_LINES, TAB_WIDTH};
 pub(super) use math::draw as draw_math;
 pub(super) use parse::parse;
 

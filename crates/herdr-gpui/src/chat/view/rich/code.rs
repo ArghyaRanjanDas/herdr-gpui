@@ -1,10 +1,10 @@
 use super::*;
-use crate::chat::selection::{
-    MAX_CODE_LINE_CHARS as MAX_LINE_CHARS, MAX_CODE_LINES as MAX_LINES, Segment, TAB_WIDTH,
+use crate::chat::{
+    rich::{CodeText, MAX_CODE_LINES},
+    selection::Segment,
 };
 use crate::review::highlight::Span;
 use std::sync::Arc;
-use unicode_width::UnicodeWidthChar;
 
 impl HerdrWindow {
     pub(super) fn rich_code(
@@ -18,20 +18,24 @@ impl HerdrWindow {
         let spans = context.visuals.code(id);
         let lines: Vec<_> = source
             .lines()
-            .take(MAX_LINES)
+            .take(MAX_CODE_LINES)
             .enumerate()
             .map(|(index, raw)| {
                 let spans = spans
                     .and_then(|spans| spans.get(index))
                     .map_or(&[][..], Vec::as_slice);
-                match context.selection.segment(block, index, 0) {
-                    Some(segment) => prepared_code_line(raw, spans, segment),
+                match context
+                    .selection
+                    .segment(block, index, 0)
+                    .and_then(Segment::code)
+                {
+                    Some(code) => highlighted(code, raw, spans),
                     None => code_line(raw, spans),
                 }
             })
             .collect();
         let truncated =
-            source.lines().count() > MAX_LINES || lines.iter().any(|line| line.truncated);
+            source.lines().count() > MAX_CODE_LINES || lines.iter().any(|line| line.truncated);
         div()
             .debug_selector(|| "chat-code-block".into())
             .min_w_0()
@@ -112,60 +116,21 @@ struct CodeLine {
     truncated: bool,
 }
 
-/// Prepared source offsets are also used for copy: rendering and selecting
-/// expanded tabs cannot drift apart, and the mapping is not rebuilt per frame.
-fn prepared_code_line(raw: &str, spans: &[Span], segment: &Segment) -> CodeLine {
-    let text = segment.text();
-    let end = segment.source_offset(text.len());
-    let spans = spans
-        .iter()
-        .filter_map(|span| {
-            let start = segment.display_offset(span.start)?;
-            let end = segment.display_offset(span.end.min(end))?;
-            (start < end).then_some(Span {
-                start,
-                end,
-                token: span.token,
-            })
-        })
-        .collect();
-    CodeLine {
-        text: text.to_owned(),
-        spans,
-        truncated: end < raw.len(),
-    }
+/// A line without a selectable segment, as when selection is unavailable.
+fn code_line(raw: &str, spans: &[Span]) -> CodeLine {
+    highlighted(&CodeText::expand(raw), raw, spans)
 }
 
-/// Tabs are layout, not unsafe controls. Map grammar byte offsets through tab
-/// expansion and control removal; the original source remains the copy payload.
-fn code_line(raw: &str, spans: &[Span]) -> CodeLine {
-    let mut text = String::new();
-    let mut offsets = Vec::new();
-    let (mut column, mut end) = (0, 0);
-    for (at, ch) in raw.char_indices().take(MAX_LINE_CHARS) {
-        offsets.push((at, text.len()));
-        if ch == '\t' {
-            let spaces = TAB_WIDTH - column % TAB_WIDTH;
-            text.extend(std::iter::repeat_n(' ', spaces));
-            column += spaces;
-        } else if !crate::notifications::unsafe_char(ch) {
-            text.push(ch);
-            column += ch.width().unwrap_or(0);
-        }
-        end = at + ch.len_utf8();
-    }
-    offsets.push((end, text.len()));
-    let position = |at| {
-        offsets
-            .binary_search_by_key(&at, |(source, _)| *source)
-            .ok()
-            .map(|i| offsets[i].1)
-    };
+/// Tabs are layout, not unsafe controls. Grammar byte offsets map through
+/// the drawn line's expansion; the original source remains the copy payload.
+/// A prepared segment's line is reused, so drawing and selecting expanded
+/// tabs cannot drift apart and the map is not rebuilt per frame.
+fn highlighted(code: &CodeText, raw: &str, spans: &[Span]) -> CodeLine {
     let spans = spans
         .iter()
         .filter_map(|span| {
-            let start = position(span.start)?;
-            let end = position(span.end.min(end))?;
+            let start = code.shown(span.start)?;
+            let end = code.shown(span.end.min(code.end))?;
             (start < end).then_some(Span {
                 start,
                 end,
@@ -174,9 +139,9 @@ fn code_line(raw: &str, spans: &[Span]) -> CodeLine {
         })
         .collect();
     CodeLine {
-        text,
+        text: code.text.clone(),
         spans,
-        truncated: end < raw.len(),
+        truncated: code.end < raw.len(),
     }
 }
 

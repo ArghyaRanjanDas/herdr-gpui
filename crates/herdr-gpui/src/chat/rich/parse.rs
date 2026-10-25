@@ -304,7 +304,11 @@ pub(in crate::chat) fn parse(text: &str, visuals: &mut Visuals) -> Option<Vec<Bl
             Event::Code(text) => {
                 let mut code_style = style.clone();
                 code_style.code = true;
-                push_text(&mut content, &text.replace('\t', "    "), &code_style);
+                push_text(
+                    &mut content,
+                    &text.replace('\t', &" ".repeat(super::TAB_WIDTH)),
+                    &code_style,
+                );
             }
             Event::SoftBreak => push_text(&mut content, " ", &style),
             Event::HardBreak => content.push(Inline::Break),

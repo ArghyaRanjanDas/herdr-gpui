@@ -1,12 +1,10 @@
 //! A cached readable projection of prepared bodies, in transcript order.
 
-use super::{
-    Caret, DETAILS_PART, Key, LABEL_PART, MAX_CODE_LINE_CHARS, MAX_CODE_LINES, Position, TAB_WIDTH,
-};
+use super::{Caret, DETAILS_PART, Key, LABEL_PART, Position};
 use crate::{
     chat::{
         prepared::{Body, Part, tool_label, tool_text},
-        rich::{Block, Inline},
+        rich::{Block, CodeText, Inline, MAX_CODE_LINES},
     },
     release_notes::{Kind, Line},
 };
@@ -17,26 +15,24 @@ use std::{
     rc::Rc,
     sync::Arc,
 };
-use unicode_width::UnicodeWidthChar;
 
 enum Text {
     Owned(String),
     Shared(Arc<str>),
     Lines(Rc<[Line]>, usize),
-}
-
-struct CodeSource {
-    text: Arc<str>,
-    range: Range<usize>,
-    /// Original and displayed byte boundaries, including the final boundary.
-    offsets: Vec<(usize, usize)>,
+    /// A code line as drawn, and the block's source it starts at `start` of,
+    /// which copy takes with its original tabs.
+    Code {
+        line: CodeText,
+        source: Arc<str>,
+        start: usize,
+    },
 }
 
 pub(crate) struct Segment {
     position: Position,
     text: Text,
     atoms: Vec<Range<usize>>,
-    code: Option<CodeSource>,
     pub(super) separator: &'static str,
 }
 
@@ -46,6 +42,15 @@ impl Segment {
             Text::Owned(text) => text,
             Text::Shared(text) => text,
             Text::Lines(lines, index) => &lines[*index].text,
+            Text::Code { line, .. } => &line.text,
+        }
+    }
+
+    /// The drawn code line this segment selects, when it is one.
+    pub(in crate::chat) fn code(&self) -> Option<&CodeText> {
+        match &self.text {
+            Text::Code { line, .. } => Some(line),
+            _ => None,
         }
     }
 
@@ -59,28 +64,7 @@ impl Segment {
         let offset = self
             .text()
             .floor_char_boundary(offset.min(self.text().len()));
-        self.code.as_ref().map_or(offset, |code| {
-            let index = code
-                .offsets
-                .partition_point(|&(_, shown)| shown <= offset)
-                .saturating_sub(1);
-            code.offsets.get(index).map_or(0, |&(source, _)| source)
-        })
-    }
-
-    pub(crate) fn display_offset(&self, offset: usize) -> Option<usize> {
-        self.code.as_ref().map_or_else(
-            || {
-                (offset <= self.text().len() && self.text().is_char_boundary(offset))
-                    .then_some(offset)
-            },
-            |code| {
-                code.offsets
-                    .binary_search_by_key(&offset, |&(source, _)| source)
-                    .ok()
-                    .map(|index| code.offsets[index].1)
-            },
-        )
+        self.code().map_or(offset, |line| line.source(offset))
     }
 
     pub(super) fn caret(&self, offset: usize) -> usize {
@@ -103,18 +87,17 @@ impl Segment {
         if offsets.is_empty() {
             return "";
         }
-        let Some(code) = &self.code else {
+        let Text::Code {
+            line,
+            source,
+            start: line_start,
+        } = &self.text
+        else {
             return &self.text()[offsets];
         };
         let start = self.source_offset(offsets.start);
-        let index = code
-            .offsets
-            .partition_point(|&(_, shown)| shown < offsets.end);
-        let end = code
-            .offsets
-            .get(index)
-            .map_or(code.range.len(), |&(source, _)| source);
-        &code.text[code.range.start + start..code.range.start + end.max(start)]
+        let end = line.source_end(offsets.end);
+        &source[line_start + start..line_start + end.max(start)]
     }
 }
 
@@ -375,14 +358,12 @@ impl Builder {
         position: Position,
         text: Text,
         atoms: Vec<Range<usize>>,
-        code: Option<CodeSource>,
         separator: &'static str,
     ) {
         self.segments.push(Segment {
             position,
             text,
             atoms,
-            code,
             separator,
         });
     }
@@ -397,7 +378,6 @@ impl Builder {
             },
             Text::Owned(text),
             Vec::new(),
-            None,
             "\n",
         );
     }
@@ -413,7 +393,6 @@ impl Builder {
                 },
                 Text::Lines(lines.clone(), row),
                 Vec::new(),
-                None,
                 "\n",
             );
         }
@@ -456,7 +435,6 @@ impl Builder {
                     position,
                     Text::Shared(source.clone()),
                     std::iter::once(0..source.len()).collect(),
-                    None,
                     "\n\n",
                 ),
                 Block::Code { source, .. } => {
@@ -470,16 +448,14 @@ impl Builder {
                             .strip_suffix('\n')
                             .map(|line| line.strip_suffix('\r').unwrap_or(line))
                             .unwrap_or(raw);
-                        let (text, offsets, end) = code_line(line);
                         self.push(
                             Position { row, ..position },
-                            Text::Owned(text),
+                            Text::Code {
+                                line: CodeText::expand(line),
+                                source: source.clone(),
+                                start: offset,
+                            },
                             Vec::new(),
-                            Some(CodeSource {
-                                text: source.clone(),
-                                range: offset..offset + end,
-                                offsets,
-                            }),
                             if row == 0 { "\n\n" } else { "\n" },
                         );
                         offset += raw.len();
@@ -537,26 +513,6 @@ impl Builder {
                 Inline::Break => text.push('\n'),
             }
         }
-        self.push(position, Text::Owned(text), atoms, None, separator);
+        self.push(position, Text::Owned(text), atoms, separator);
     }
-}
-
-fn code_line(raw: &str) -> (String, Vec<(usize, usize)>, usize) {
-    let mut text = String::new();
-    let mut offsets = Vec::new();
-    let (mut column, mut end) = (0, 0);
-    for (at, ch) in raw.char_indices().take(MAX_CODE_LINE_CHARS) {
-        offsets.push((at, text.len()));
-        if ch == '\t' {
-            let spaces = TAB_WIDTH - column % TAB_WIDTH;
-            text.extend(std::iter::repeat_n(' ', spaces));
-            column += spaces;
-        } else if !crate::notifications::unsafe_char(ch) {
-            text.push(ch);
-            column += ch.width().unwrap_or(0);
-        }
-        end = at + ch.len_utf8();
-    }
-    offsets.push((end, text.len()));
-    (text, offsets, end)
 }
