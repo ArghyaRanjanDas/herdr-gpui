@@ -11,6 +11,16 @@ import time
 from rich_chat_resize import capture_resize
 
 
+def last_record(log, prefix):
+    # The app can be halfway through a write when this reader polls. Only a
+    # newline-terminated record is complete; malformed complete records still
+    # fail instead of silently hiding a fixture problem.
+    for line in reversed(log.read_text(errors="replace").splitlines(keepends=True)):
+        if line.endswith("\n") and line.startswith(prefix):
+            return json.loads(line[len(prefix):])
+    return None
+
+
 def capture_native_input(env, directory, app, case):
     display_name = env["DISPLAY"]
     if not display_name.startswith(":") or not display_name[1:].isdigit():
@@ -70,8 +80,7 @@ def capture_native_input(env, directory, app, case):
         x.XSync(display, False)
 
         def record(prefix):
-            records = [line[len(prefix):] for line in log.read_text(errors="replace").splitlines() if line.startswith(prefix)]
-            return json.loads(records[-1]) if records else None
+            return last_record(log, prefix)
 
         def wait_state(expected, copied):
             deadline = time.monotonic() + 4
