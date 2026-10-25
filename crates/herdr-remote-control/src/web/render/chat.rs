@@ -186,7 +186,7 @@ fn entry_view(entry: &Entry, focus: bool) -> Markup {
         EntryKind::Turn(summary) => html! {
             div class="text-[11px] text-faint text-center border-t border-dashed border-line pt-1.5" { (summary.describe()) }
         },
-        EntryKind::Notice { level, text } => html! {
+        EntryKind::Notice { level, text, .. } => html! {
             div class={ "text-sm " (match level { NoticeLevel::Error => "text-red", NoticeLevel::Warning => "text-amber", NoticeLevel::Info => "text-muted" }) } { (text) }
         },
     }

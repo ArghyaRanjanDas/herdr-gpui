@@ -13,6 +13,7 @@ mod chat_view;
 mod icons;
 mod lists;
 mod markup;
+mod notices;
 mod picker;
 mod preview;
 mod search;
