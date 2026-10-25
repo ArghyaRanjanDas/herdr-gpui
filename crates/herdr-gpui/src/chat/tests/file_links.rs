@@ -3,6 +3,13 @@ use crate::terminal::{RowTarget, file_target};
 use gpui::{Modifiers, TestAppContext, point, px};
 use herdr_client::ConnectTarget;
 
+fn document_link(label: &str, path: &std::path::Path) -> String {
+    // Raw Windows paths may contain Markdown escapes: `\.` in a hidden
+    // directory loses its separator, even inside angle brackets.
+    let destination = url::Url::from_file_path(path).unwrap();
+    format!("[{label}](<{destination}>)")
+}
+
 #[cfg(windows)]
 #[test]
 fn windows_file_links_accept_absolute_drives_and_reject_network_paths() {
@@ -69,7 +76,7 @@ fn local_rich_document_link_opens_only_on_click_and_keeps_original_copy(cx: &mut
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("notes.md");
     std::fs::write(&path, "# Synthetic notes\n").unwrap();
-    let source = format!("[Changes and verification details](<{}>)", path.display());
+    let source = document_link("Changes and verification details", &path);
     let (view, _peer, cx) = overlay::open(cx, ConnectTarget::Local);
     view.update(cx, |view, _| {
         view.config.open_files_in = crate::config::FileTarget::System;
@@ -88,11 +95,20 @@ fn local_rich_document_link_opens_only_on_click_and_keeps_original_copy(cx: &mut
         point(prose.origin.x + px(8.), prose.center().y),
         Modifiers::default(),
     );
-    let expected = url::Url::from_file_path(std::fs::canonicalize(path).unwrap()).unwrap();
     wait_until(|| {
         cx.run_until_parked();
-        cx.opened_url().as_deref() == Some(expected.as_str())
+        cx.opened_url().is_some()
     });
+    let opened = url::Url::parse(&cx.opened_url().unwrap())
+        .unwrap()
+        .to_file_path()
+        .unwrap();
+    // Opening resolves symlinks without expanding Windows short names;
+    // canonicalize both sides to compare the file rather than its spelling.
+    assert_eq!(
+        std::fs::canonicalize(opened).unwrap(),
+        std::fs::canonicalize(path).unwrap()
+    );
     let copy = cx.debug_bounds("chat-copy-1").unwrap();
     cx.simulate_mouse_move(copy.center(), None, Modifiers::default());
     overlay::poll(&view, &program, cx);
@@ -108,7 +124,7 @@ fn remote_rich_document_link_never_opens_an_identically_named_local_file(cx: &mu
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("notes.md");
     std::fs::write(&path, "# Laptop-only notes\n").unwrap();
-    let source = format!("[Remote notes](<{}>)", path.display());
+    let source = document_link("Remote notes", &path);
     let (view, _peer, cx) = overlay::open(
         cx,
         ConnectTarget::Ssh {
@@ -131,3 +147,5 @@ fn remote_rich_document_link_never_opens_an_identically_named_local_file(cx: &mu
     cx.run_until_parked();
     assert!(cx.opened_url().is_none());
 }
+
+mod markdown;
