@@ -2,6 +2,8 @@ use super::*;
 use crate::chat::prepared::{Body, DiffSummary, Part, Prepared, diff_counts, summarize};
 use herdr_chat_protocol::{Tool, ToolContent, ToolKind, ToolStatus};
 
+mod fences;
+
 #[test]
 fn literal_indented_widget_examples_cannot_become_controls() {
     let json = r#"{"components":[{"type":"text","text":"Example"}]}"#;

@@ -361,9 +361,13 @@ fn message(text: &str, visuals: &mut Visuals) -> Vec<Part> {
         let mut fence = line.to_owned();
         for inner in lines.by_ref() {
             fence.push_str(inner);
-            let close = inner.trim();
-            if marker
-                .is_some_and(|marker| close.len() >= count && close.chars().all(|ch| ch == marker))
+            let close = inner.trim_end_matches([' ', '\t', '\r', '\n']);
+            let indentation = close.bytes().take_while(|byte| *byte == b' ').count();
+            let close = &close[indentation..];
+            if indentation <= 3
+                && marker.is_some_and(|marker| {
+                    close.len() >= count && close.chars().all(|ch| ch == marker)
+                })
             {
                 closed = true;
                 break;
