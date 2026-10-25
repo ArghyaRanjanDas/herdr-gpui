@@ -1,0 +1,79 @@
+{
+  "public_feature_commit": "436dc1aecdb08cac72ecc42caf9599d3629dfa43",
+  "native_cases": 6,
+  "distinct_pointer_checks_passed": 18,
+  "visual_review": "passed",
+  "environment": "Isolated native Linux Xvfb fixture windows with synthetic transcripts and software Vulkan; not live-agent end-to-end or native Windows/macOS verification.",
+  "renderer_equivalence": "Tracked Rust code, dependency manifests and bundled assets are identical between fdb22e2c and436dc1ae; only three Python probe/test files changed. The native test binary still reports its actual fdb22e2c build revision.",
+  "images": [
+    {
+      "file": "selection-dark-fullwidth.png",
+      "sha256": "9ecaaeee975b275b791cf32479dee701917fca94df238258658e47c775322f83",
+      "case": "selection-dark-wide-width0",
+      "driver_commit": "02d088a37bc5be584000e660b85e2754b2687914",
+      "renderer_commit": "fdb22e2ce147a4ed7000a61d7d87e858af2b24da",
+      "renderer_binary_sha256": "47e75d47b3e5fb2c371ad7b6c1cbc34a6105c324bcddc0499289bee8dc1c7c3f"
+    },
+    {
+      "file": "selection-light-narrow.png",
+      "sha256": "5c5150fe21228cdbc904c6d3e7b9c06a9a4462db4b6a1f1c2bc468d6b103e3fe",
+      "case": "selection-light-narrow-width1200",
+      "driver_commit": "fdb22e2ce147a4ed7000a61d7d87e858af2b24da",
+      "renderer_commit": "fdb22e2ce147a4ed7000a61d7d87e858af2b24da",
+      "renderer_binary_sha256": "47e75d47b3e5fb2c371ad7b6c1cbc34a6105c324bcddc0499289bee8dc1c7c3f"
+    },
+    {
+      "file": "input-enlarged.png",
+      "sha256": "2e4d4df08ba29996a74973573e4cd3be94f97264dc7a17381a23a59544c69f48",
+      "case": "input-resize-dark-wide-width800",
+      "driver_commit": "436dc1aecdb08cac72ecc42caf9599d3629dfa43",
+      "renderer_commit": "fdb22e2ce147a4ed7000a61d7d87e858af2b24da",
+      "renderer_binary_sha256": "47e75d47b3e5fb2c371ad7b6c1cbc34a6105c324bcddc0499289bee8dc1c7c3f"
+    },
+    {
+      "file": "input-reduced.png",
+      "sha256": "9dcc211d74d1fa1c97b9dced7bf9e0e7fa6fc3f7c71181358acfe8225e9056b4",
+      "case": "input-resize-dark-wide-width800",
+      "driver_commit": "436dc1aecdb08cac72ecc42caf9599d3629dfa43",
+      "renderer_commit": "fdb22e2ce147a4ed7000a61d7d87e858af2b24da",
+      "renderer_binary_sha256": "47e75d47b3e5fb2c371ad7b6c1cbc34a6105c324bcddc0499289bee8dc1c7c3f"
+    },
+    {
+      "file": "input-auto.png",
+      "sha256": "f18738d3c7b1ed337be676a16cb885aad7e7330f543931ec1bcbdca11a83bcb6",
+      "case": "input-resize-dark-wide-width800",
+      "driver_commit": "436dc1aecdb08cac72ecc42caf9599d3629dfa43",
+      "renderer_commit": "fdb22e2ce147a4ed7000a61d7d87e858af2b24da",
+      "renderer_binary_sha256": "47e75d47b3e5fb2c371ad7b6c1cbc34a6105c324bcddc0499289bee8dc1c7c3f"
+    },
+    {
+      "file": "input-light-narrow.png",
+      "sha256": "ca7cef666040e911c26517f2f0b3835d08982f1e2e284f42b90953e5bf3e4ea5",
+      "case": "input-resize-light-narrow-width800",
+      "driver_commit": "436dc1aecdb08cac72ecc42caf9599d3629dfa43",
+      "renderer_commit": "fdb22e2ce147a4ed7000a61d7d87e858af2b24da",
+      "renderer_binary_sha256": "47e75d47b3e5fb2c371ad7b6c1cbc34a6105c324bcddc0499289bee8dc1c7c3f"
+    },
+    {
+      "file": "questions.png",
+      "sha256": "520c57d6ffb3083b64e130c6bf780313af63d52e88fa98164caaf239d6c4690b",
+      "case": "questions-dark-narrow-imessage-width800",
+      "driver_commit": "fdb22e2ce147a4ed7000a61d7d87e858af2b24da",
+      "renderer_commit": "fdb22e2ce147a4ed7000a61d7d87e858af2b24da",
+      "renderer_binary_sha256": "47e75d47b3e5fb2c371ad7b6c1cbc34a6105c324bcddc0499289bee8dc1c7c3f"
+    },
+    {
+      "file": "widgets.png",
+      "sha256": "04a9b60db34c9a31f89407c50bd397a2dab2611678a480ffbf5d8a4fc5957086",
+      "case": "widgets-dark-wide-width800",
+      "driver_commit": "fdb22e2ce147a4ed7000a61d7d87e858af2b24da",
+      "renderer_commit": "fdb22e2ce147a4ed7000a61d7d87e858af2b24da",
+      "renderer_binary_sha256": "47e75d47b3e5fb2c371ad7b6c1cbc34a6105c324bcddc0499289bee8dc1c7c3f"
+    },
+    {
+      "file": "selection-before.png",
+      "sha256": "d7ae8e3e8c1deea7888a1cc3cacd7be617494744bce8bac6a81fa6dfb1e69947",
+      "provenance": "Earlier development build before the aligned-table selection fix; not an upstream release screenshot."
+    }
+  ]
+}
