@@ -77,33 +77,19 @@ pub(crate) fn with_existing(
     bindings: &[super::existing::Binding],
 ) -> Vec<Target> {
     let Some(route) = route else { return targets };
-    for binding in bindings.iter().take(MAX_CHATS) {
-        if targets.len() >= MAX_CHATS {
-            break;
+    extend(&mut targets, bindings, |binding| {
+        if !snapshot.agents.iter().any(|agent| {
+            agent.pane_id == binding.pane_id && agent.agent.as_deref() == Some(binding.agent.name())
+        }) {
+            return None;
         }
-        if targets
-            .iter()
-            .any(|target| target.pane_id == binding.pane_id)
-            || !snapshot.agents.iter().any(|agent| {
-                agent.pane_id == binding.pane_id
-                    && agent.agent.as_deref() == Some(binding.agent.name())
-            })
-        {
-            continue;
-        }
-        let Some(endpoint) = uuid::Uuid::parse_str(&binding.session_id)
-            .ok()
-            .and_then(|id| id.simple().to_string().parse().ok())
-        else {
-            continue;
-        };
-        targets.push(Target {
-            endpoint,
+        Some(Target {
+            endpoint: uuid::Uuid::parse_str(&binding.session_id).ok()?.into(),
             existing: Some(binding.clone()),
             pane_id: binding.pane_id.clone(),
             route: route.clone(),
-        });
-    }
+        })
+    });
     targets
 }
 
@@ -122,32 +108,46 @@ pub(crate) fn with_mirrors(
         return targets;
     }
     let Some(route) = route else { return targets };
-    for mirror in mirrors.iter().take(MAX_CHATS) {
-        if targets.len() >= MAX_CHATS {
-            break;
-        }
+    extend(&mut targets, mirrors, |mirror| {
         let matches_host = match (route, mirror.host.as_deref()) {
             (Route::Local, None) => true,
             (Route::Ssh(host), Some(expected)) => host == expected,
             _ => false,
         };
         if !matches_host
-            || targets.iter().any(|target| target.pane_id == mirror.pane)
             || !snapshot
                 .agents
                 .iter()
                 .any(|agent| agent.pane_id == mirror.pane)
         {
-            continue;
+            return None;
         }
-        if let Ok(endpoint) = mirror.endpoint.parse() {
-            targets.push(Target {
-                endpoint,
-                existing: None,
-                pane_id: mirror.pane.clone(),
-                route: route.clone(),
-            });
+        Some(Target {
+            endpoint: mirror.endpoint.parse().ok()?,
+            existing: None,
+            pane_id: mirror.pane.clone(),
+            route: route.clone(),
+        })
+    });
+    targets
+}
+
+/// Adds the target `target` makes of each of the first [`MAX_CHATS`]
+/// candidates, until there are [`MAX_CHATS`] targets. A pane keeps the
+/// target it already has, so earlier sources win.
+fn extend<T>(
+    targets: &mut Vec<Target>,
+    candidates: &[T],
+    mut target: impl FnMut(&T) -> Option<Target>,
+) {
+    for candidate in candidates.iter().take(MAX_CHATS) {
+        if targets.len() >= MAX_CHATS {
+            break;
+        }
+        if let Some(target) = target(candidate)
+            && !targets.iter().any(|known| known.pane_id == target.pane_id)
+        {
+            targets.push(target);
         }
     }
-    targets
 }

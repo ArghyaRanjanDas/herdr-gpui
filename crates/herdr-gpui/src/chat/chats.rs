@@ -52,14 +52,7 @@ pub(crate) fn connect(
             super::Route::Local => {
                 // Unlike a missing socket directory, this is not permanent:
                 // the lookup started this tick may still be running.
-                let program = match program {
-                    super::Program::Found(program) => program,
-                    super::Program::Missing => Err(super::StartError::ProgramMissing)?,
-                    super::Program::Unknown | super::Program::Looking => {
-                        Err(super::StartError::ProgramUnknown)?
-                    }
-                };
-                let mut command = herdr_client::new_command(program);
+                let mut command = herdr_client::new_command(program.found()?);
                 command.args(args);
                 command
             }
