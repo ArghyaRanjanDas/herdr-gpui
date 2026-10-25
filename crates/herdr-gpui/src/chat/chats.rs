@@ -29,9 +29,12 @@ pub(crate) type Connect<'a> =
 
 /// The connector the app uses: the program's endpoint by the id its pane
 /// reported, a socket in this user's private directory or a named pipe, or
-/// for a chat on an SSH host, `herdr-acp connect` run there over `ssh`.
+/// for a chat on an SSH host, `herdr-acp connect` run there over `ssh`. An
+/// existing agent on this machine is observed by `program`, the same
+/// `herdr-acp` new chats start with.
 pub(crate) fn connect(
     target: &Target,
+    program: &super::Program,
     since: Option<Cursor>,
     resend: Vec<ClientMessage>,
 ) -> Result<Link> {
@@ -47,14 +50,15 @@ pub(crate) fn connect(
         ];
         let command = match &target.route {
             super::Route::Local => {
-                let program = std::env::var_os(super::PROGRAM_ENV)
-                    .map(std::path::PathBuf::from)
-                    .or_else(|| {
-                        std::env::current_exe()
-                            .ok()
-                            .map(|exe| exe.with_file_name("herdr-acp"))
-                    })
-                    .ok_or(Error::NoEndpointDir)?;
+                // Unlike a missing socket directory, this is not permanent:
+                // the lookup started this tick may still be running.
+                let program = match program {
+                    super::Program::Found(program) => program,
+                    super::Program::Missing => Err(super::StartError::ProgramMissing)?,
+                    super::Program::Unknown | super::Program::Looking => {
+                        Err(super::StartError::ProgramUnknown)?
+                    }
+                };
                 let mut command = herdr_client::new_command(program);
                 command.args(args);
                 command

@@ -15,26 +15,22 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// The client snapshot carries no agent session ids, so a new conversation in
+/// the same pane is found only by probing. Probes start at `REFRESH`, back off
+/// to `SETTLED` while the answer stays the same, and return to `REFRESH` when it
+/// changes or the panes' reported activity does.
 const REFRESH: Duration = Duration::from_secs(2);
+const SETTLED: Duration = Duration::from_secs(30);
+/// One unreachable probe keeps the overlays; this many in a row drop them.
+const MAX_FAILURES: u8 = 2;
+mod error;
+pub(crate) use error::Error;
+
 const MAX_MATCHING_PROCESSES: usize = 16;
 const LIMITS: ScriptLimits = ScriptLimits {
     output: 1024 * 1024,
     idle: Duration::from_secs(10),
 };
-
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum Error {
-    #[error("could not read the existing agent metadata")]
-    Answer(#[source] serde_json::Error),
-    #[error(transparent)]
-    Host(#[from] teleport::Error),
-    #[error("could not inspect the existing agent on its host")]
-    Query(#[source] herdr_client::Error),
-    #[error("the existing-agent discovery worker stopped")]
-    Stopped,
-    #[error("could not start existing-agent discovery")]
-    Worker(#[source] std::io::Error),
-}
 
 /// An answer is valid only for this particular connected daemon generation.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -82,10 +78,13 @@ impl Drop for Probe {
 
 #[derive(Default)]
 pub(crate) struct Existing {
+    activity: u64,
     bindings: Vec<Binding>,
     candidates: Vec<String>,
     due: Option<Instant>,
     error: Option<Error>,
+    failures: u8,
+    interval: Duration,
     probe: Option<Probe>,
     scope: Option<Scope>,
 }
@@ -101,11 +100,14 @@ impl Existing {
 
     /// Nonblocking. Call with only panes currently reported as Codex/Claude.
     /// Losing a pane or connection removes its overlay immediately, without
-    /// waiting for a probe that was started under older metadata.
+    /// waiting for a probe that was started under older metadata. `activity`
+    /// fingerprints what the daemon reports about those panes, such as their
+    /// statuses; a change brings the next probe forward.
     pub(crate) fn poll(
         &mut self,
         scope: Option<Scope>,
         candidates: &[String],
+        activity: u64,
         now: Instant,
     ) -> bool {
         let candidates: Vec<_> = candidates.iter().take(super::MAX_CHATS).cloned().collect();
@@ -122,6 +124,15 @@ impl Existing {
             self.bindings
                 .retain(|binding| self.candidates.contains(&binding.pane_id));
             self.error = None;
+            self.failures = 0;
+            self.interval = REFRESH;
+        }
+        if self.activity != activity {
+            self.activity = activity;
+            self.interval = REFRESH;
+            if self.probe.is_none() {
+                self.due = None;
+            }
         }
         if self.scope.is_none() || self.candidates.is_empty() {
             changed |= !self.bindings.is_empty();
@@ -138,21 +149,23 @@ impl Existing {
             });
         if let Some(result) = result {
             self.probe = None;
-            self.due = Some(now + REFRESH);
             match result {
                 Ok(bindings) => {
-                    changed |= self.bindings != bindings || self.error.is_some();
+                    let settled = self.bindings == bindings && self.error.is_none();
+                    changed |= !settled;
+                    self.interval = if settled {
+                        (self.interval * 2).clamp(REFRESH, SETTLED)
+                    } else {
+                        REFRESH
+                    };
                     self.bindings = bindings;
                     self.error = None;
+                    self.failures = 0;
                 }
-                Err(error) => {
-                    // An unreachable host is not evidence that the old agent
-                    // still owns the pane. Return to its original terminal.
-                    self.bindings.clear();
-                    self.error = Some(error);
-                    changed = true;
-                }
+                Err(error) => self.fail(error),
             }
+            self.due = Some(now + self.interval);
+            changed |= self.error.is_some();
         }
         if self.probe.is_none() && self.due.is_none_or(|due| now >= due) {
             let Some(scope) = &self.scope else {
@@ -161,14 +174,25 @@ impl Existing {
             match start(scope.clone(), self.candidates.clone()) {
                 Ok(probe) => self.probe = Some(probe),
                 Err(error) => {
-                    self.bindings.clear();
-                    self.error = Some(error);
-                    self.due = Some(now + REFRESH);
+                    self.fail(error);
+                    self.due = Some(now + self.interval);
                     changed = true;
                 }
             }
         }
         changed
+    }
+
+    /// A single unreachable probe, such as one dropped SSH round trip, keeps
+    /// the overlays. Repeated failures are not evidence that the old agent
+    /// still owns the pane, so they return it to its original terminal.
+    fn fail(&mut self, error: Error) {
+        self.failures = self.failures.saturating_add(1);
+        if self.failures >= MAX_FAILURES {
+            self.bindings.clear();
+        }
+        self.error = Some(error);
+        self.interval = REFRESH;
     }
 }
 

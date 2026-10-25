@@ -221,3 +221,24 @@ fn rich_prose_links_explicit_files_but_never_code_or_bare_file_urls() {
         if content.iter().any(|part| matches!(part, Inline::Text(_, style)
             if style.link.as_deref() == Some("https://example.com/x")))));
 }
+
+#[test]
+fn spaced_inline_delimiters_still_become_math() {
+    assert_eq!(
+        parse::normalize_math(r"Area \( \pi r^2 \)."),
+        r"Area $\pi r^2$."
+    );
+    assert_eq!(
+        parse::normalize_math(r"Empty \(  \) stays"),
+        r"Empty \(  \) stays"
+    );
+    let blocks = parse(r"The area is \( \pi r^2 \).", &mut Visuals::default()).unwrap();
+    let Block::Paragraph { content, .. } = &blocks[0] else {
+        panic!("paragraph")
+    };
+    assert!(
+        content
+            .iter()
+            .any(|part| matches!(part, Inline::Math { .. }))
+    );
+}

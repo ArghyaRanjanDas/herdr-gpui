@@ -35,7 +35,7 @@ fn a_shell_return_cancels_a_pending_lookup_and_drops_the_overlay() {
         }),
         ..Default::default()
     };
-    assert!(state.poll(Some(scope()), &[], Instant::now()));
+    assert!(state.poll(Some(scope()), &[], 0, Instant::now()));
     assert!(state.bindings().is_empty());
     assert!(flag.load(Ordering::Acquire));
 }
@@ -53,28 +53,86 @@ fn an_old_daemon_answer_is_not_applied_to_another_connection() {
         }),
         ..Default::default()
     };
-    assert!(state.poll(None, &[], Instant::now()));
+    assert!(state.poll(None, &[], 0, Instant::now()));
     assert!(state.bindings().is_empty());
     assert!(state.scope.is_none());
 }
 
-#[test]
-fn failed_queries_do_not_keep_old_sessions_attached() {
+fn answered(result: Result<Vec<Binding>, Error>) -> Probe {
     let (sender, receiver) = mpsc::sync_channel(1);
-    sender.send(Err(Error::Stopped)).unwrap();
+    sender.send(result).unwrap();
+    Probe {
+        cancelled: Arc::new(AtomicBool::new(false)),
+        result: receiver,
+    }
+}
+
+#[test]
+fn repeated_failed_queries_do_not_keep_old_sessions_attached() {
+    let candidates = ["w1:p1".to_owned()];
+    let now = Instant::now();
     let mut state = Existing {
         scope: Some(scope()),
         bindings: vec![binding()],
-        candidates: vec!["w1:p1".into()],
-        probe: Some(Probe {
-            cancelled: Arc::new(AtomicBool::new(false)),
-            result: receiver,
-        }),
+        candidates: candidates.to_vec(),
+        probe: Some(answered(Err(Error::Stopped))),
         ..Default::default()
     };
-    assert!(state.poll(Some(scope()), &["w1:p1".into()], Instant::now()));
-    assert!(state.bindings().is_empty());
+    assert!(state.poll(Some(scope()), &candidates, 0, now));
+    assert_eq!(state.bindings(), [binding()], "one failure is transient");
     assert!(matches!(state.error(), Some(Error::Stopped)));
+    state.probe = Some(answered(Err(Error::Stopped)));
+    assert!(state.poll(Some(scope()), &candidates, 0, now));
+    assert!(state.bindings().is_empty());
+    state.probe = Some(answered(Ok(vec![binding()])));
+    assert!(state.poll(Some(scope()), &candidates, 0, now));
+    assert_eq!(state.bindings(), [binding()]);
+    assert!(state.error().is_none());
+}
+
+#[test]
+fn settled_answers_back_off_and_reported_activity_probes_again() {
+    let candidates = ["w1:p1".to_owned()];
+    let now = Instant::now();
+    let mut state = Existing {
+        scope: Some(scope()),
+        bindings: vec![binding()],
+        candidates: candidates.to_vec(),
+        interval: REFRESH,
+        ..Default::default()
+    };
+    let mut expected = REFRESH;
+    for _ in 0..6 {
+        state.probe = Some(answered(Ok(vec![binding()])));
+        assert!(!state.poll(Some(scope()), &candidates, 0, now));
+        expected = (expected * 2).min(SETTLED);
+        assert_eq!(state.due, Some(now + expected));
+        // Cancel the probe the poll started; the next answer replaces it.
+        state.probe = None;
+    }
+    assert_eq!(state.interval, SETTLED);
+    state.probe = Some(answered(Ok(Vec::new())));
+    assert!(state.poll(Some(scope()), &candidates, 0, now));
+    assert_eq!(state.due, Some(now + REFRESH), "a changed answer resets");
+    // A probe in flight keeps running; activity shortens the next wait.
+    let (_sender, receiver) = mpsc::sync_channel(1);
+    state.probe = Some(Probe {
+        cancelled: Arc::new(AtomicBool::new(false)),
+        result: receiver,
+    });
+    state.interval = SETTLED;
+    assert!(!state.poll(Some(scope()), &candidates, 7, now));
+    assert_eq!(state.interval, REFRESH);
+    assert!(state.probe.is_some());
+    // Idle, activity makes the probe due now rather than at the backoff.
+    state.probe = None;
+    state.due = Some(now + SETTLED);
+    state.activity = 7;
+    state.interval = SETTLED;
+    state.candidates.clear();
+    state.bindings.clear();
+    assert!(!state.poll(Some(scope()), &[], 8, now));
+    assert_eq!((state.due, state.interval), (None, REFRESH));
 }
 
 #[test]

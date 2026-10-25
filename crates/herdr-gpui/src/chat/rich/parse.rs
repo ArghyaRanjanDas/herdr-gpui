@@ -457,11 +457,19 @@ pub(super) fn normalize_math(text: &str) -> String {
             while closers.peek().is_some_and(|at| *at < cursor + 2) {
                 closers.next();
             }
+            // pulldown-cmark opens inline `$` only before a non-space and closes
+            // it only after one, so `\( x \)` must lose its inner padding.
+            // Display math keeps its exact source.
             if let Some(&end) = closers.peek()
                 && (marker == "$$" || ranges.peek().is_none_or(|range| end < range.start))
+                && let body = match marker {
+                    "$" => text[cursor + 2..end].trim(),
+                    _ => &text[cursor + 2..end],
+                }
+                && !body.trim().is_empty()
             {
                 result.push_str(marker);
-                result.push_str(&text[cursor + 2..end]);
+                result.push_str(body);
                 result.push_str(marker);
                 cursor = end + 2;
                 continue;

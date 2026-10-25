@@ -5,7 +5,7 @@
 use super::{
     super::{
         chats::ChatPane,
-        prepared::{Body, Part},
+        prepared::{Body, Part, ToolSummary, tool_label, tool_text},
         rich::{Block, Inline},
         visual::Visuals,
     },
@@ -15,10 +15,12 @@ use super::{
 };
 use crate::{HerdrWindow, config::corners, fonts::StyledFont, notifications::safe_text};
 use gpui::{prelude::*, *};
-use herdr_chat_protocol::{Entry, EntryKind, NoticeLevel, Tool, ToolContent, ToolKind, ToolStatus};
+use herdr_chat_protocol::{Entry, EntryKind, NoticeLevel, Tool, ToolKind, ToolStatus};
 
 mod questions;
 
+/// Locations listed under a folded tool call.
+const LOCATIONS: usize = 3;
 /// Characters of a folded thought shown.
 const FOLDED: usize = 120;
 fn tool_kind(kind: ToolKind) -> &'static str {
@@ -33,13 +35,6 @@ fn tool_kind(kind: ToolKind) -> &'static str {
         ToolKind::Fetch => "Fetch",
         ToolKind::SwitchMode => "Mode",
         ToolKind::Other => "Tool",
-    }
-}
-
-fn tool_label(title: &str) -> &str {
-    match title {
-        "request_user_input" | "request_user_input_async" => "Ask user",
-        _ => title,
     }
 }
 
@@ -412,6 +407,7 @@ impl HerdrWindow {
             .children(
                 page_written(tool).map(|path| self.render_chat_file_page(pane_id, entry, path, cx)),
             )
+            .children(self.render_chat_tool_glance(entry, tool, summary, expanded, visuals))
             .when(expanded, |card| {
                 card.child(
                     div()
@@ -459,15 +455,108 @@ impl HerdrWindow {
                                         cx,
                                     ))
                             })
-                        }))
-                        .children(summary.into_iter().flat_map(|summary| {
-                            summary
-                                .images
-                                .iter()
-                                .map(|id| self.render_chat_visual(*id, visuals, Frame::ToolImage))
                         })),
                 )
             })
+    }
+
+    /// What a tool call shows without being opened: each file's changed line
+    /// counts and its pictures always, and while folded, its first locations
+    /// and output lines. Opening it shows the full text in their place.
+    fn render_chat_tool_glance(
+        &self,
+        entry: herdr_chat_protocol::EntryId,
+        tool: &Tool,
+        summary: Option<&ToolSummary>,
+        expanded: bool,
+        visuals: &Visuals,
+    ) -> Vec<AnyElement> {
+        let theme = &self.theme;
+        let hues = Hues::of(theme);
+        let small = px((self.chat_text_size() - 1.).max(10.));
+        let note = |text: String| {
+            div()
+                .text_size(small)
+                .text_color(rgb(theme.muted))
+                .child(text)
+                .into_any_element()
+        };
+        let mut glance = Vec::new();
+        let Some(summary) = summary else {
+            return glance;
+        };
+        glance.extend(summary.diffs.iter().enumerate().map(|(index, diff)| {
+            div()
+                .debug_selector(move || format!("chat-tool-diff-{}-{index}", entry.0))
+                .flex()
+                .gap(px(6.))
+                .text_size(small)
+                .child(div().min_w_0().truncate().child(safe_text(&diff.path, 300)))
+                .child(
+                    div()
+                        .flex_none()
+                        .text_color(rgb(hues.green))
+                        .child(format!("+{}", diff.added)),
+                )
+                .child(
+                    div()
+                        .flex_none()
+                        .text_color(rgb(hues.red))
+                        .child(format!("\u{2212}{}", diff.removed)),
+                )
+                .into_any_element()
+        }));
+        if !summary.images.is_empty() {
+            glance.push(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .gap(px(6.))
+                    .py(px(2.))
+                    .children(
+                        summary
+                            .images
+                            .iter()
+                            .map(|id| self.render_chat_visual(*id, visuals, Frame::ToolImage)),
+                    )
+                    .into_any_element(),
+            );
+        }
+        if expanded {
+            return glance;
+        }
+        glance.extend(tool.locations.iter().take(LOCATIONS).map(|location| {
+            div()
+                .text_size(small)
+                .text_color(rgb(theme.subtext()))
+                .truncate()
+                .child(safe_text(location, 300))
+                .into_any_element()
+        }));
+        let more_locations = tool.locations.len().saturating_sub(LOCATIONS);
+        if more_locations > 0 {
+            glance.push(note(format!("and {more_locations} more")));
+        }
+        glance.extend(summary.lines.iter().map(|line| {
+            div()
+                .debug_selector(move || format!("chat-tool-preview-{}", entry.0))
+                .text_size(small)
+                .text_font(&self.config.terminal)
+                .text_color(rgb(theme.subtext()))
+                .whitespace_nowrap()
+                .overflow_hidden()
+                .child(line.clone())
+                .into_any_element()
+        }));
+        if summary.more > 0 {
+            glance.push(note(format!("{} more lines", summary.more)));
+        }
+        if summary.terminals > 0 {
+            glance.push(note(
+                "Terminal output shows in the program's own view".to_owned(),
+            ));
+        }
+        glance
     }
 
     fn render_chat_notice(&self, pane_id: &str, entry: &Entry, cx: &mut Context<Self>) -> Div {
@@ -616,21 +705,6 @@ impl HerdrWindow {
                         .child(self.render_chat_copy(id.0, details, true, cx)),
                 )
             })
-    }
-}
-
-/// Expanded tool output comes from the retained transcript, not its preview.
-fn tool_text(content: &ToolContent) -> Option<String> {
-    match content {
-        ToolContent::Text { text } => Some(text.clone()),
-        ToolContent::Diff { old, new, path } => Some(match old {
-            Some(old) => format!("{path}\nBefore:\n{old}\nAfter:\n{new}"),
-            None => format!("{path}\nNew file:\n{new}"),
-        }),
-        ToolContent::Terminal { id } => Some(format!(
-            "Terminal {id}: output is available in the program's terminal view."
-        )),
-        ToolContent::Image { .. } => None,
     }
 }
 

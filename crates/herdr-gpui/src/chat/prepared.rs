@@ -53,6 +53,31 @@ pub(crate) struct DiffSummary {
     pub(crate) removed: usize,
 }
 
+/// What a tool call's header reads. The view and the selection document
+/// both call this, so the drawn text always matches its selectable segment.
+pub(crate) fn tool_label(title: &str) -> &str {
+    match title {
+        "request_user_input" | "request_user_input_async" => "Ask user",
+        _ => title,
+    }
+}
+
+/// Expanded tool output comes from the retained transcript, not its preview.
+/// Shared by the view and the selection document, like [`tool_label`].
+pub(crate) fn tool_text(content: &ToolContent) -> Option<String> {
+    match content {
+        ToolContent::Text { text } => Some(text.clone()),
+        ToolContent::Diff { old, new, path } => Some(match old {
+            Some(old) => format!("{path}\nBefore:\n{old}\nAfter:\n{new}"),
+            None => format!("{path}\nNew file:\n{new}"),
+        }),
+        ToolContent::Terminal { id } => Some(format!(
+            "Terminal {id}: output is available in the program's terminal view."
+        )),
+        ToolContent::Image { .. } => None,
+    }
+}
+
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct ToolSummary {
     pub(crate) diffs: Vec<DiffSummary>,
@@ -188,7 +213,7 @@ impl Prepared {
             }
             let visuals = &mut self.visuals;
             let body = match &entry.kind {
-                EntryKind::User { text } => Body::Message(message(text, visuals)),
+                EntryKind::User { text } => Body::Message(message(text, Author::User, visuals)),
                 EntryKind::Notice { answers, .. } if !answers.is_empty() => {
                     let text: Rc<str> = answers_text(answers).into();
                     let parts = vec![match super::rich::parse(&text, visuals) {
@@ -206,7 +231,7 @@ impl Prepared {
                             }
                             Body::Summary(summary)
                         }
-                        None => Body::Message(message(text, visuals)),
+                        None => Body::Message(message(text, Author::Agent, visuals)),
                     }
                 }
                 EntryKind::Image { image, .. } => {
@@ -296,7 +321,16 @@ pub(super) fn answers_text(answers: &[QuestionAnswer]) -> String {
 /// A message as Markdown text with its diagrams, pages, and
 /// pictures between it. Only a closed fence becomes a diagram or a page, so
 /// one still streaming shows as code.
-fn message(text: &str, visuals: &mut Visuals) -> Vec<Part> {
+/// Who wrote a message. A user's own text is shown as Markdown, but only an
+/// agent's reply can become a live card or a page preview: pasting an earlier
+/// reply must not turn the user's bubble into a form that sends prompts.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Author {
+    Agent,
+    User,
+}
+
+fn message(text: &str, author: Author, visuals: &mut Visuals) -> Vec<Part> {
     let mut end = text.len().min(MESSAGE.body);
     while !text.is_char_boundary(end) {
         end -= 1;
@@ -346,8 +380,18 @@ fn message(text: &str, visuals: &mut Visuals) -> Vec<Part> {
             Some(info) if info.eq_ignore_ascii_case("mermaid") && diagrams < DIAGRAMS => {
                 Fence::Diagram
             }
-            Some(info) if info.eq_ignore_ascii_case("html") && pages < PAGES => Fence::Page,
-            Some(info) if info.eq_ignore_ascii_case("herdr-ui") && widgets < WIDGETS => {
+            Some(info)
+                if author == Author::Agent
+                    && info.eq_ignore_ascii_case("html")
+                    && pages < PAGES =>
+            {
+                Fence::Page
+            }
+            Some(info)
+                if author == Author::Agent
+                    && info.eq_ignore_ascii_case("herdr-ui")
+                    && widgets < WIDGETS =>
+            {
                 Fence::Widget
             }
             Some(_) => Fence::Code,
@@ -380,29 +424,23 @@ fn message(text: &str, visuals: &mut Visuals) -> Vec<Part> {
             Fence::Widget => super::widgets::MAX_SOURCE,
             Fence::Code => MESSAGE.body,
         };
-        if !closed
-            || source.trim().is_empty()
-            || source.len() > limit
-            || matches!(kind, Fence::Code)
-        {
+        if !closed || source.trim().is_empty() || source.len() > limit {
             prose.push_str(&fence);
             continue;
         }
-        if matches!(kind, Fence::Widget) {
-            match super::widgets::Document::parse(&source) {
+        match kind {
+            // Markdown draws code fences itself, in place in the prose.
+            Fence::Code => prose.push_str(&fence),
+            Fence::Widget => match super::widgets::Document::parse(&source) {
                 Ok(document) => {
                     flush(&mut prose, &mut parts, visuals);
                     widgets += 1;
                     parts.push(Part::Widget(Rc::new(document)));
                 }
                 Err(_) => prose.push_str(&fence),
-            }
-            continue;
-        }
-        flush(&mut prose, &mut parts, visuals);
-        match kind {
-            Fence::Code | Fence::Widget => unreachable!("code and widget fences handled above"),
+            },
             Fence::Diagram => {
+                flush(&mut prose, &mut parts, visuals);
                 diagrams += 1;
                 let id = VisualId::of(&source);
                 let code = release_notes::parse(&fence).into();
@@ -410,6 +448,7 @@ fn message(text: &str, visuals: &mut Visuals) -> Vec<Part> {
                 parts.push(Part::Diagram(id, code));
             }
             Fence::Page => {
+                flush(&mut prose, &mut parts, visuals);
                 pages += 1;
                 parts.push(Part::Html {
                     page: source.into(),

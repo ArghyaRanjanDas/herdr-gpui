@@ -4,7 +4,7 @@
 use super::super::{
     Target,
     prepared::{Body, Part},
-    widgets::{ActionMode, Component, Document, Input, Value, bounded_input, slider_value},
+    widgets::{ActionMode, Component, Document, Input, Value, bounded_input, slider_value, snap},
 };
 use crate::{
     HerdrWindow,
@@ -500,7 +500,7 @@ impl HerdrWindow {
                     this.change_widget(
                         &request,
                         &name,
-                        Value::Number((value + delta).clamp(min, max)),
+                        Value::Number(snap(value + delta, min, max, step)),
                         cx,
                     );
                 },

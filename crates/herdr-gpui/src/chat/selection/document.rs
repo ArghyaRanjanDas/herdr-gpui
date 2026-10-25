@@ -5,12 +5,12 @@ use super::{
 };
 use crate::{
     chat::{
-        prepared::{Body, Part},
+        prepared::{Body, Part, tool_label, tool_text},
         rich::{Block, Inline},
     },
     release_notes::{Kind, Line},
 };
-use herdr_chat_protocol::{Entry, EntryId, EntryKind, ToolContent, Transcript};
+use herdr_chat_protocol::{Entry, EntryId, EntryKind, Transcript};
 use std::{
     collections::{HashMap, HashSet},
     ops::Range,
@@ -295,15 +295,11 @@ fn project(
         }
         Some(Body::Tool(_)) => {
             if let EntryKind::Tool(tool) = &entry.kind {
-                let label = match tool.title.as_str() {
-                    "request_user_input" | "request_user_input_async" => "Ask user",
-                    title => title,
-                };
                 builder.plain(
                     LABEL_PART,
                     0,
                     0,
-                    crate::notifications::safe_text(label, 300),
+                    crate::notifications::safe_text(tool_label(&tool.title), 300),
                 );
                 if expanded {
                     builder.plain(0, 0, 0, tool.title.clone());
@@ -311,18 +307,9 @@ fn project(
                         builder.plain(1, 0, row, location.clone());
                     }
                     for (block, content) in tool.content.iter().enumerate() {
-                        let text = match content {
-                            ToolContent::Text { text } => text.clone(),
-                            ToolContent::Diff { old, new, path } => match old {
-                                Some(old) => format!("{path}\nBefore:\n{old}\nAfter:\n{new}"),
-                                None => format!("{path}\nNew file:\n{new}"),
-                            },
-                            ToolContent::Terminal { id } => format!(
-                                "Terminal {id}: output is available in the program's terminal view."
-                            ),
-                            ToolContent::Image { .. } => continue,
-                        };
-                        builder.plain(2, block, 0, text);
+                        if let Some(text) = tool_text(content) {
+                            builder.plain(2, block, 0, text);
+                        }
                     }
                 }
             }

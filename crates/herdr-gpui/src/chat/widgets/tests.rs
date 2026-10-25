@@ -169,3 +169,17 @@ fn static_cards_metrics_tables_and_charts_are_validated() {
     ]}"#;
     assert!(Document::parse(source).is_ok());
 }
+
+#[test]
+fn slider_values_land_on_clean_step_decimals() {
+    assert_eq!(slider_value(0.35, 0., 1., 0.05), 0.35);
+    assert_eq!(slider_value(0.35, 0., 1., 0.05).to_string(), "0.35");
+    let mut value = 0.6;
+    for _ in 0..7 {
+        value = snap(value + 0.05, 0., 1., 0.05);
+    }
+    assert_eq!(value, 0.95);
+    assert_eq!(snap(0.1 + 0.2, 0., 1., 0.1).to_string(), "0.3");
+    assert_eq!(snap(2.4, 0.5, 10., 1.), 2.5);
+    assert_eq!(snap(f64::MAX / 2., 0., f64::MAX, 0.5), f64::MAX / 2.);
+}

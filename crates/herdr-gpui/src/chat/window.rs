@@ -17,7 +17,12 @@ impl HerdrWindow {
     /// is local, applies what their programs sent, and keeps each composer
     /// styled and holding the keyboard while its pane is focused.
     pub(crate) fn poll_chats(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.poll_chats_with(&mut chats::connect, window, cx);
+        let program = self.chats.program.clone();
+        self.poll_chats_with(
+            &mut |target, since, resend| chats::connect(target, &program, since, resend),
+            window,
+            cx,
+        );
     }
 
     /// [`Self::poll_chats`], connecting through `connect`.
@@ -49,7 +54,7 @@ impl HerdrWindow {
                         generation: (self.selection_epoch, endpoint.generation),
                     })
             });
-        let candidates = self
+        let agents = self
             .live
             .snapshot
             .as_ref()
@@ -59,12 +64,22 @@ impl HerdrWindow {
                     .iter()
                     .filter(|agent| matches!(agent.agent.as_deref(), Some("codex" | "claude")))
                     .filter(|agent| discovery::endpoint(&agent.tokens).is_none())
-                    .map(|agent| agent.pane_id.clone())
                     .take(super::MAX_CHATS)
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        let discovered = self.chats.existing.poll(scope, &candidates, now);
+        let candidates: Vec<_> = agents.iter().map(|agent| agent.pane_id.clone()).collect();
+        // A new conversation usually moves its pane's reported state, so the
+        // daemon's change counters bring the next discovery probe forward.
+        let activity = {
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            for agent in &agents {
+                (&agent.pane_id, &agent.agent, agent.state_change_seq).hash(&mut hasher);
+            }
+            hasher.finish()
+        };
+        let discovered = self.chats.existing.poll(scope, &candidates, activity, now);
         if discovered && let Some(error) = self.chats.existing.error() {
             tracing::debug!(%error, "Existing agent discovery unavailable");
         }
@@ -97,11 +112,9 @@ impl HerdrWindow {
         changed |= self.chats.relayout(self.config.chat.layout);
         changed |= self.chats.rewidth(self.config.chat.max_width);
         changed |= self.chats.poll(now);
-        for pane in self
-            .chats
-            .panes_mut()
-            .filter(|pane| pane.target.existing.is_some())
-        {
+        // Observed panes, whether a discovered agent or a `[chat.mirrors]`
+        // entry, take their status from the daemon; live chats ignore it.
+        for pane in self.chats.panes_mut() {
             let status = self
                 .live
                 .snapshot

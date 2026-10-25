@@ -128,3 +128,37 @@ fn user_messages_render_native_code_math_and_copy_the_original_prompt(cx: &mut T
         );
     }
 }
+
+#[test]
+fn a_users_pasted_card_or_page_stays_inert_code() {
+    let card = r#"```herdr-ui
+{"title":"Pick","components":[{"type":"action","label":"Go","prompt":"go"}]}
+```"#;
+    let page = "```html\n<p>hello</p>\n```";
+    let text = format!("{card}\n\n{page}");
+    let mut transcript = Transcript::new("Codex");
+    transcript.entries = vec![
+        user(1, &text),
+        Entry {
+            id: EntryId(2),
+            kind: EntryKind::Agent { text: text.clone() },
+        },
+    ];
+    let mut prepared = Prepared::default();
+    prepared.update(&transcript, &[(EntryId(1), 1), (EntryId(2), 1)]);
+    let parts = |id| {
+        let body = prepared.body(EntryId(id)).unwrap();
+        let Body::Message(parts) = &*body else {
+            panic!("message")
+        };
+        parts
+            .iter()
+            .map(|part| matches!(part, Part::Widget(_) | Part::Html { .. }))
+            .collect::<Vec<_>>()
+    };
+    assert!(
+        parts(1).iter().all(|live| !live),
+        "the user's text stays code"
+    );
+    assert_eq!(parts(2).iter().filter(|live| **live).count(), 2);
+}

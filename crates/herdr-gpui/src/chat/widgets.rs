@@ -2,7 +2,9 @@
 //! code, URLs, tools, or commands. Only an explicit action click prepares a
 //! normal chat prompt containing the user's current form values.
 
+mod error;
 mod state;
+pub(crate) use error::Error;
 pub(crate) use state::{Input, State, bounded_input};
 
 use serde::{Deserialize, Serialize};
@@ -13,16 +15,6 @@ pub(crate) const MAX_INPUT: usize = 2048;
 const MAX_COMPONENTS: usize = 32;
 const MAX_FIELDS: usize = 16;
 const MAX_PROMPT: usize = 16 * 1024;
-
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum Error {
-    #[error("the interactive card exceeds its size limit")]
-    TooLarge,
-    #[error("invalid interactive card JSON")]
-    Json(#[from] serde_json::Error),
-    #[error("invalid interactive card: {0}")]
-    Invalid(&'static str),
-}
 
 #[derive(Debug)]
 pub(crate) struct Document {
@@ -344,7 +336,27 @@ pub(crate) fn slider_value(fraction: f64, min: f64, max: f64, step: f64) -> f64 
     if fraction >= 1. {
         return max;
     }
-    (min + ((fraction.clamp(0., 1.) * (max - min)) / step).round() * step).clamp(min, max)
+    snap(min + fraction * (max - min), min, max, step)
+}
+
+/// Rounds a slider value to the step grid from `min`, then to the decimals
+/// `min` and `step` are written with, so `0.05 * 7` reads `0.35` in the label
+/// and the prompt JSON rather than carrying binary float noise.
+pub(crate) fn snap(value: f64, min: f64, max: f64, step: f64) -> f64 {
+    let decimals = |number: f64| {
+        let text = number.abs().to_string();
+        text.split_once('.')
+            .map_or(0, |(_, fraction)| fraction.len())
+    };
+    let scale = 10f64.powi(decimals(min).max(decimals(step)).min(12) as i32);
+    let stepped = min + ((value - min) / step).round() * step;
+    let rounded = (stepped * scale).round() / scale;
+    if rounded.is_finite() {
+        rounded
+    } else {
+        stepped
+    }
+    .clamp(min, max)
 }
 
 #[cfg(test)]
