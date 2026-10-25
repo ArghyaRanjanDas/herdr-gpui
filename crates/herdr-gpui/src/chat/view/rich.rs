@@ -1,17 +1,16 @@
 //! Native rich blocks. No HTML is executed and code-copy buttons only copy.
 use crate::chat::{
-    rich::{Block, Inline, Style},
+    rich::{Block, Inline, Kind, Style},
     visual::{Shown, VisualId, Visuals},
 };
 use crate::{
     HerdrWindow,
     config::{ChatLayoutMode, Theme},
     fonts::StyledFont,
-    release_notes::Kind,
     review::highlight::Token,
 };
 use gpui::{prelude::*, *};
-use pulldown_cmark::Alignment;
+use pulldown_cmark::{Alignment, HeadingLevel};
 use std::ops::Range;
 
 mod code;
@@ -63,11 +62,10 @@ impl HerdrWindow {
                 let element = match block {
                     Block::Paragraph {
                         kind,
-                        heading,
                         indent,
                         content,
                     } => self
-                        .rich_paragraph((*kind, *heading, *indent), content, index, &mut context)
+                        .rich_paragraph(*kind, *indent, content, index, &mut context)
                         .into_any_element(),
                     Block::Math { id, source } => {
                         let formula = self.rich_math(*id, source, visuals, false);
@@ -129,7 +127,8 @@ impl HerdrWindow {
 
     fn rich_paragraph(
         &self,
-        (kind, heading, indent): (Kind, u8, usize),
+        kind: Kind,
+        indent: usize,
         content: &[Inline],
         block: usize,
         context: &mut RichContext<'_, '_, '_>,
@@ -139,9 +138,9 @@ impl HerdrWindow {
             return row.h(px(1.)).bg(rgb(self.theme.active));
         }
         let row = row
-            .when(kind == Kind::Heading, |row| {
+            .when_some(heading(kind), |row, level| {
                 row.font_weight(FontWeight::SEMIBOLD)
-                    .text_size(px(self.chat_text_size() * heading_scale(heading)))
+                    .text_size(px(self.chat_text_size() * heading_scale(level)))
                     .line_height(relative(1.3))
                     .pt(px(10.))
                     .pb(px(2.))
@@ -501,11 +500,18 @@ impl HerdrWindow {
     }
 }
 
-fn heading_scale(level: u8) -> f32 {
+fn heading(kind: Kind) -> Option<HeadingLevel> {
+    match kind {
+        Kind::Heading(level) => Some(level),
+        _ => None,
+    }
+}
+
+fn heading_scale(level: HeadingLevel) -> f32 {
     match level {
-        1 => 1.65,
-        2 => 1.4,
-        3 => 1.2,
+        HeadingLevel::H1 => 1.65,
+        HeadingLevel::H2 => 1.4,
+        HeadingLevel::H3 => 1.2,
         _ => 1.05,
     }
 }

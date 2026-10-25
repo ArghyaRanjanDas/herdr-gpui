@@ -59,7 +59,7 @@ fn mixed_math_retains_inline_atom_layout_and_headings_have_hierarchy() {
         source: "x".into(),
     }];
     assert!(prose_spans(&content).is_none());
-    assert!(heading_scale(1) > heading_scale(2));
-    assert!(heading_scale(2) > heading_scale(3));
-    assert!(heading_scale(3) > heading_scale(4));
+    assert!(heading_scale(HeadingLevel::H1) > heading_scale(HeadingLevel::H2));
+    assert!(heading_scale(HeadingLevel::H2) > heading_scale(HeadingLevel::H3));
+    assert!(heading_scale(HeadingLevel::H3) > heading_scale(HeadingLevel::H4));
 }

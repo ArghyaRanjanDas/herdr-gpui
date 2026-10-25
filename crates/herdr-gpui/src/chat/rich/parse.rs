@@ -1,8 +1,5 @@
-use super::{Block, Inline, Style, formula};
-use crate::{
-    chat::visual::{Source, VisualId, Visuals},
-    release_notes::Kind,
-};
+use super::{Block, Inline, Kind, Style, formula};
+use crate::chat::visual::{Source, VisualId, Visuals};
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 use std::sync::Arc;
 
@@ -31,7 +28,6 @@ pub(in crate::chat) fn parse(text: &str, visuals: &mut Visuals) -> Option<Vec<Bl
     let mut blocks = Vec::new();
     let mut content = Vec::new();
     let mut kind = Kind::Paragraph;
-    let mut heading = 0;
     let mut style = Style::default();
     let (mut bold, mut italic, mut strike) = (0usize, 0usize, 0usize);
     let mut links = Vec::new();
@@ -92,7 +88,6 @@ pub(in crate::chat) fn parse(text: &str, visuals: &mut Visuals) -> Option<Vec<Bl
                     &mut blocks,
                     &mut content,
                     kind,
-                    heading,
                     lists.len().saturating_sub(1),
                 );
                 let closed = match &info {
@@ -124,23 +119,19 @@ pub(in crate::chat) fn parse(text: &str, visuals: &mut Visuals) -> Option<Vec<Bl
                     &mut blocks,
                     &mut content,
                     kind,
-                    heading,
                     lists.len().saturating_sub(1),
                 );
-                kind = Kind::Heading;
-                heading = level as u8;
+                kind = Kind::Heading(level);
             }
             Event::End(TagEnd::Paragraph | TagEnd::Heading(_)) => {
                 flush(
                     &mut blocks,
                     &mut content,
                     kind,
-                    heading,
                     lists.len().saturating_sub(1),
                 );
                 item = None;
                 kind = Kind::Paragraph;
-                heading = 0;
             }
             Event::Start(Tag::BlockQuote(_)) => {
                 quote += 1;
@@ -151,7 +142,6 @@ pub(in crate::chat) fn parse(text: &str, visuals: &mut Visuals) -> Option<Vec<Bl
                     &mut blocks,
                     &mut content,
                     kind,
-                    heading,
                     lists.len().saturating_sub(1),
                 );
                 quote = quote.saturating_sub(1);
@@ -161,7 +151,6 @@ pub(in crate::chat) fn parse(text: &str, visuals: &mut Visuals) -> Option<Vec<Bl
                     &mut blocks,
                     &mut content,
                     kind,
-                    heading,
                     lists.len().saturating_sub(1),
                 );
                 lists.push(start);
@@ -174,7 +163,6 @@ pub(in crate::chat) fn parse(text: &str, visuals: &mut Visuals) -> Option<Vec<Bl
                     &mut blocks,
                     &mut content,
                     kind,
-                    heading,
                     lists.len().saturating_sub(1),
                 );
                 kind = match lists.last_mut() {
@@ -192,12 +180,10 @@ pub(in crate::chat) fn parse(text: &str, visuals: &mut Visuals) -> Option<Vec<Bl
                     &mut blocks,
                     &mut content,
                     kind,
-                    heading,
                     lists.len().saturating_sub(1),
                 );
                 item = None;
                 kind = Kind::Paragraph;
-                heading = 0;
             }
             Event::Start(Tag::Strong) => {
                 bold += 1;
@@ -251,7 +237,6 @@ pub(in crate::chat) fn parse(text: &str, visuals: &mut Visuals) -> Option<Vec<Bl
                     &mut blocks,
                     &mut content,
                     kind,
-                    heading,
                     lists.len().saturating_sub(1),
                 );
                 table = Some(align);
@@ -290,7 +275,6 @@ pub(in crate::chat) fn parse(text: &str, visuals: &mut Visuals) -> Option<Vec<Bl
                             &mut blocks,
                             &mut content,
                             kind,
-                            heading,
                             lists.len().saturating_sub(1),
                         );
                         blocks.push(Block::Math { id, source });
@@ -320,12 +304,10 @@ pub(in crate::chat) fn parse(text: &str, visuals: &mut Visuals) -> Option<Vec<Bl
                     &mut blocks,
                     &mut content,
                     kind,
-                    heading,
                     lists.len().saturating_sub(1),
                 );
                 blocks.push(Block::Paragraph {
                     kind: Kind::Rule,
-                    heading: 0,
                     indent: 0,
                     content: Vec::new(),
                 });
@@ -337,23 +319,15 @@ pub(in crate::chat) fn parse(text: &str, visuals: &mut Visuals) -> Option<Vec<Bl
         &mut blocks,
         &mut content,
         kind,
-        heading,
         lists.len().saturating_sub(1),
     );
     Some(blocks)
 }
 
-fn flush(
-    blocks: &mut Vec<Block>,
-    content: &mut Vec<Inline>,
-    kind: Kind,
-    heading: u8,
-    indent: usize,
-) {
+fn flush(blocks: &mut Vec<Block>, content: &mut Vec<Inline>, kind: Kind, indent: usize) {
     if !content.is_empty() {
         blocks.push(Block::Paragraph {
             kind,
-            heading,
             indent,
             content: std::mem::take(content),
         });

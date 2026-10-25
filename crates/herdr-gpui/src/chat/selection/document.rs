@@ -4,9 +4,9 @@ use super::{Caret, Cell, Key, Position, Region};
 use crate::{
     chat::{
         prepared::{Body, MESSAGE, Part, folded_thought, notice_label, tool_header, tool_text},
-        rich::{Block, CodeText, Inline, MAX_CODE_LINES},
+        rich::{Block, CodeText, Inline, Kind, MAX_CODE_LINES},
     },
-    release_notes::{Kind, Line},
+    release_notes::Line,
 };
 use herdr_chat_protocol::{Entry, EntryId, EntryKind, Transcript};
 use std::{

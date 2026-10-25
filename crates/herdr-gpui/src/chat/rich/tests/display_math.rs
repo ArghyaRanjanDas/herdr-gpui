@@ -7,7 +7,7 @@ fn multiline_display_math_precedes_markdown_and_preserves_the_exact_tex_source()
         let message = format!("Before\n\n{open}{source}{close}\n\nAfter");
         let blocks = parse(&message, &mut Visuals::default()).unwrap();
         assert!(
-            matches!(&blocks[..], [Block::Paragraph { heading: 0, .. }, Block::Math { source: actual, .. }, Block::Paragraph { heading: 0, .. }] if actual.as_ref() == source)
+            matches!(&blocks[..], [Block::Paragraph { kind: Kind::Paragraph, .. }, Block::Math { source: actual, .. }, Block::Paragraph { kind: Kind::Paragraph, .. }] if actual.as_ref() == source)
         );
         assert!(draw_math(source, true, 16., 0xffffff).is_ok());
     }

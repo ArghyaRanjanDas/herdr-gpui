@@ -13,36 +13,31 @@ fn ordinary_markdown_keeps_hierarchy_lists_and_inline_semantics_without_visual_j
         .filter_map(|block| match block {
             Block::Paragraph {
                 kind,
-                heading,
                 indent,
                 content,
-            } => Some((*kind, *heading, *indent, content)),
+            } => Some((*kind, *indent, content)),
             _ => None,
         })
         .collect();
-    assert_eq!(paragraphs[0].1, 1);
-    assert_eq!(paragraphs[2].1, 2);
-    assert_eq!((paragraphs[3].0, paragraphs[3].2), (Kind::Bullet, 0));
-    assert_eq!((paragraphs[4].0, paragraphs[4].2), (Kind::Bullet, 1));
+    assert_eq!(paragraphs[0].0, Kind::Heading(HeadingLevel::H1));
+    assert_eq!(paragraphs[2].0, Kind::Heading(HeadingLevel::H2));
+    assert_eq!((paragraphs[3].0, paragraphs[3].1), (Kind::Bullet, 0));
+    assert_eq!((paragraphs[4].0, paragraphs[4].1), (Kind::Bullet, 1));
     assert!(
         paragraphs
             .iter()
-            .any(|(kind, _, _, _)| *kind == Kind::Numbered(3))
+            .any(|(kind, _, _)| *kind == Kind::Numbered(3))
     );
     assert!(
         paragraphs
             .iter()
-            .any(|(kind, _, _, _)| *kind == Kind::Numbered(4))
+            .any(|(kind, _, _)| *kind == Kind::Numbered(4))
     );
-    assert!(
-        paragraphs
-            .iter()
-            .any(|(kind, _, _, _)| *kind == Kind::Quote)
-    );
+    assert!(paragraphs.iter().any(|(kind, _, _)| *kind == Kind::Quote));
     for (expected, field) in [("bold", 0), ("emphasis", 1), ("code", 2), ("old", 3)] {
         assert!(
             paragraphs[1]
-                .3
+                .2
                 .iter()
                 .any(|part| matches!(part, Inline::Text(text, style)
             if text == expected && [style.bold, style.italic, style.code, style.strike][field]))

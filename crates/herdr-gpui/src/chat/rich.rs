@@ -13,8 +13,7 @@ pub(super) use math::draw as draw_math;
 pub(super) use parse::parse;
 
 use super::visual::{Source, VisualId, Visuals};
-use crate::release_notes::Kind;
-use pulldown_cmark::Alignment;
+use pulldown_cmark::{Alignment, HeadingLevel};
 use std::sync::Arc;
 
 pub(super) const MAX_MATH_BYTES: usize = 4_096;
@@ -37,12 +36,23 @@ pub(crate) enum Inline {
     Break,
 }
 
+/// What a paragraph block is, which sets its typography and marker.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Kind {
+    Paragraph,
+    Heading(HeadingLevel),
+    Bullet,
+    /// An ordered list item, with the number it was written with.
+    Numbered(u32),
+    Quote,
+    /// A thematic break, which has no content.
+    Rule,
+}
+
 #[derive(Debug)]
 pub(crate) enum Block {
     Paragraph {
         kind: Kind,
-        /// Heading level (1–6), otherwise zero; kept for typographic hierarchy.
-        heading: u8,
         /// Nested list depth; bounded in the view so deep input stays readable.
         indent: usize,
         content: Vec<Inline>,
