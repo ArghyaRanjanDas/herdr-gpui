@@ -115,19 +115,8 @@ impl HerdrWindow {
         // Observed panes, whether a discovered agent or a `[chat.mirrors]`
         // entry, take their status from the daemon; live chats ignore it.
         for pane in self.chats.panes_mut() {
-            let status = self
-                .live
-                .snapshot
-                .as_ref()
-                .and_then(|snapshot| {
-                    snapshot
-                        .agents
-                        .iter()
-                        .find(|agent| agent.pane_id == pane.target.pane_id)
-                })
-                .map(|agent| agent.agent_status);
             use herdr_client::protocol::AgentStatus;
-            let status = match status {
+            let status = match self.live.agent_status(&pane.target.pane_id) {
                 Some(AgentStatus::Idle | AgentStatus::Done) => Status::Idle,
                 Some(AgentStatus::Working | AgentStatus::Blocked) => Status::Working,
                 _ => Status::Starting,
@@ -345,6 +334,10 @@ impl HerdrWindow {
 
     /// Browser-style zoom while reading a rich conversation or typing in its
     /// original terminal editor. Other terminal panes keep their Ctrl keys.
+    /// These keys are fixed aliases beside the font size commands' own
+    /// shortcuts, which reach the window through the keymap's actions, so
+    /// they are not in the keymap: there they would take Ctrl-= and Ctrl-0
+    /// from every terminal.
     pub(crate) fn chat_zoom_key(
         &mut self,
         event: &KeyDownEvent,

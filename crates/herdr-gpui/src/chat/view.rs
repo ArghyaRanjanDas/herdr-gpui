@@ -492,13 +492,9 @@ impl HerdrWindow {
         let hues = Hues::of(theme);
         let transcript = chat.session.transcript();
         let status = &transcript.status;
-        let needs_input = chat.target.existing.is_some()
-            && self.live.snapshot.as_ref().is_some_and(|snapshot| {
-                snapshot.agents.iter().any(|agent| {
-                    agent.pane_id == chat.target.pane_id
-                        && agent.agent_status == herdr_client::protocol::AgentStatus::Blocked
-                })
-            });
+        let needs_input = chat.input() == ChatInput::Terminal
+            && self.live.agent_status(&chat.target.pane_id)
+                == Some(herdr_client::protocol::AgentStatus::Blocked);
         let dot = match status {
             Status::Starting => theme.muted,
             Status::Idle => hues.green,

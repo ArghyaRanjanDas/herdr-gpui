@@ -31,12 +31,21 @@ fn manual_height_still_exposes_the_live_editor_cursor() {
     let actual = layout(RECT, InputSize::Rows(3), false, Some(&cursor), VIEWPORT);
     assert_eq!(actual.input.y, cursor.y - 1);
     assert_eq!(actual.input.y + actual.input.height, RECT.y + RECT.height);
+    // A blocked agent's question opens the automatic size only.
+    let blocked = layout(RECT, InputSize::Auto, true, None, VIEWPORT);
+    assert_eq!(blocked.state, InputState::Blocked);
     assert_eq!(
-        layout(RECT, InputSize::Auto, true, None, VIEWPORT),
+        Layout {
+            state: InputState::Ready,
+            ..blocked
+        },
         layout(RECT, InputSize::Expanded, false, None, VIEWPORT)
     );
     assert_eq!(
         layout(RECT, InputSize::Auto, false, None, VIEWPORT),
-        layout(RECT, InputSize::Compact, true, None, VIEWPORT)
+        Layout {
+            state: InputState::Ready,
+            ..layout(RECT, InputSize::Compact, true, None, VIEWPORT)
+        }
     );
 }

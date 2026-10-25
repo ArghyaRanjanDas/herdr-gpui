@@ -92,7 +92,7 @@ fn a_larger_daemon_frame_shows_an_affordance_inside_the_actual_viewport() {
     let viewport = ClientSurfaceSize { cols: 60, rows: 30 };
     for expanded in [false, true] {
         let actual = layout(RECT, InputSize::Auto, expanded, None, viewport);
-        assert!(actual.awaiting_fit);
+        assert_eq!(actual.state, InputState::AwaitingFit);
         assert_eq!(
             actual.conversation,
             SurfaceRect {
@@ -117,7 +117,7 @@ fn a_larger_daemon_frame_shows_an_affordance_inside_the_actual_viewport() {
         assert_eq!(actual.input.y, viewport.rows);
     }
     let fitted = layout(RECT, InputSize::Compact, false, None, VIEWPORT);
-    assert!(!fitted.awaiting_fit);
+    assert_eq!(fitted.state, InputState::Ready);
     assert_eq!(fitted.input.height, 8);
 }
 

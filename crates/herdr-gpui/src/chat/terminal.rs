@@ -2,7 +2,10 @@
 //! are replaced by rich prose; the bottom cells, focus, IME, image paste and
 //! approval dialogs remain the original running program's UI.
 
-use super::{chats::ChatPane, view::pane_bounds};
+use super::{
+    chats::{ChatInput, ChatPane},
+    view::pane_bounds,
+};
 use crate::{HerdrWindow, fonts::StyledFont};
 use gpui::{prelude::*, *};
 use herdr_client::protocol::{
@@ -45,12 +48,23 @@ impl InputSize {
     }
 }
 
+/// What the bar above an observed agent's editor says of it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum InputState {
+    /// The daemon's frame is larger than this window shows, so the editor
+    /// lies outside it until the window is activated and fits the frame.
+    AwaitingFit,
+    /// The agent asks a question or an approval in its editor.
+    Blocked,
+    /// The editor takes the user's input as usual.
+    Ready,
+}
+
 /// All rectangles remain in the original terminal grid. No terminal resizing
 /// or pointer-coordinate translation is needed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Layout {
-    pub(crate) awaiting_fit: bool,
-    pub(crate) blocked: bool,
+    pub(crate) state: InputState,
     pub(crate) conversation: SurfaceRect,
     pub(crate) divider: SurfaceRect,
     pub(crate) input: SurfaceRect,
@@ -75,8 +89,7 @@ fn layout(
         let bottom = visible.y.saturating_add(visible.height);
         let divider_height = u16::from(visible.height > 0);
         return Layout {
-            awaiting_fit: true,
-            blocked: false,
+            state: InputState::AwaitingFit,
             conversation: SurfaceRect {
                 height: visible.height - divider_height,
                 ..visible
@@ -107,8 +120,11 @@ fn layout(
     let divider_y = top.saturating_sub(1).max(rect.y);
     let divider_height = u16::from(top > rect.y);
     Layout {
-        awaiting_fit: false,
-        blocked: false,
+        state: if blocked {
+            InputState::Blocked
+        } else {
+            InputState::Ready
+        },
         conversation: SurfaceRect {
             height: divider_y - rect.y,
             ..rect
@@ -133,22 +149,16 @@ impl HerdrWindow {
         surface: &PaneSurfaceFrame,
     ) -> Option<Layout> {
         let chat = self.chats.pane(&pane.pane_id)?;
-        if !self.chats.shown(&pane.pane_id) || chat.target.existing.is_none() {
+        if !self.chats.shown(&pane.pane_id) || chat.input() != ChatInput::Terminal {
             return None;
         }
-        let status = self.live.snapshot.as_ref().and_then(|snapshot| {
-            snapshot
-                .agents
-                .iter()
-                .find(|agent| agent.pane_id == pane.pane_id)
-                .map(|agent| agent.agent_status)
-        });
+        let status = self.live.agent_status(&pane.pane_id);
         let blocked = status == Some(AgentStatus::Blocked);
         let editing = matches!(
             status,
             Some(AgentStatus::Idle | AgentStatus::Done | AgentStatus::Blocked)
         );
-        let mut layout = layout(
+        Some(layout(
             pane.inner_rect,
             chat.terminal_size,
             blocked,
@@ -160,9 +170,7 @@ impl HerdrWindow {
                 .as_ref()
                 .filter(|_| pane.focused && editing),
             self.options.surface_size,
-        );
-        layout.blocked = blocked;
-        Some(layout)
+        ))
     }
 
     /// A small separator above the uncovered terminal editor. Clicking its
@@ -180,7 +188,10 @@ impl HerdrWindow {
         );
         let pane = chat.target.pane_id.clone();
         let focus_pane = pane.clone();
-        let expanded = chat.terminal_size.expanded(layout.blocked);
+        let expanded = chat
+            .terminal_size
+            .expanded(layout.state == InputState::Blocked);
+        let awaiting_fit = layout.state == InputState::AwaitingFit;
         let theme = &self.theme;
         let bar = div()
             .id(SharedString::from(format!("chat-terminal-input-{pane}")))
@@ -202,13 +213,11 @@ impl HerdrWindow {
             .text_color(rgb(theme.subtext()))
             .text_font(&self.config.ui)
             .text_size(px(self.config.terminal.size.min(12.)))
-            .when(layout.awaiting_fit, |bar| bar.cursor_pointer())
-            .child(div().min_w_0().truncate().child(if layout.awaiting_fit {
-                "Activate to fit agent input"
-            } else if layout.blocked {
-                "Question or approval pending · original agent input"
-            } else {
-                "Agent input · same session"
+            .when(awaiting_fit, |bar| bar.cursor_pointer())
+            .child(div().min_w_0().truncate().child(match layout.state {
+                InputState::AwaitingFit => "Activate to fit agent input",
+                InputState::Blocked => "Question or approval pending · original agent input",
+                InputState::Ready => "Agent input · same session",
             }))
             .on_mouse_down(
                 MouseButton::Left,
@@ -221,7 +230,7 @@ impl HerdrWindow {
                 div()
                     .id("chat-expand-input")
                     .debug_selector(move || {
-                        if layout.awaiting_fit {
+                        if awaiting_fit {
                             "chat-fit-input".into()
                         } else {
                             "chat-expand-input".into()
@@ -231,7 +240,7 @@ impl HerdrWindow {
                     .cursor_pointer()
                     .px(px(6.))
                     .hover(|button| button.bg(rgb(theme.active)))
-                    .child(if layout.awaiting_fit {
+                    .child(if awaiting_fit {
                         "Fit input"
                     } else if expanded {
                         "Compact input"
@@ -240,9 +249,7 @@ impl HerdrWindow {
                     })
                     .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
                         cx.stop_propagation();
-                        if !layout.awaiting_fit
-                            && let Some(chat) = this.chats.pane_mut(&pane)
-                        {
+                        if !awaiting_fit && let Some(chat) = this.chats.pane_mut(&pane) {
                             chat.terminal_size = if expanded {
                                 InputSize::Compact
                             } else {

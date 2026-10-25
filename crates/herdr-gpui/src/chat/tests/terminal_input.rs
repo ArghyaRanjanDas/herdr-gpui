@@ -5,7 +5,10 @@
 use super::*;
 use crate::{
     HerdrWindow,
-    chat::{existing::Binding, terminal::InputSize},
+    chat::{
+        existing::Binding,
+        terminal::{InputSize, InputState},
+    },
     sidebar::layout_tests::full_draw,
     window::MockPeer,
 };
@@ -178,7 +181,7 @@ fn explicit_compact_overrides_a_blocked_prompts_automatic_expansion(cx: &mut Tes
         let layout = view
             .chat_terminal_layout(&surface.panes[0], surface)
             .unwrap();
-        assert!(layout.blocked);
+        assert_eq!(layout.state, InputState::Blocked);
         assert_eq!(layout.input.height, 8);
         assert!(!view.chats.raw("w1:p1"));
     });
@@ -272,7 +275,7 @@ fn compact_blocked_input_keeps_a_high_editing_cursor_visible(cx: &mut TestAppCon
         let layout = view
             .chat_terminal_layout(&surface.panes[0], surface)
             .unwrap();
-        assert!(layout.blocked);
+        assert_eq!(layout.state, InputState::Blocked);
         assert!(layout.input.height > 8);
         assert!(layout.input.y <= caret.y);
         assert!(caret.y < layout.input.y + layout.input.height);
@@ -362,7 +365,7 @@ fn oversized_shared_terminal_shows_a_fit_action_until_its_original_editor_fits(
         let layout = view
             .chat_terminal_layout(&surface.panes[0], surface)
             .unwrap();
-        assert!(layout.awaiting_fit);
+        assert_eq!(layout.state, InputState::AwaitingFit);
         assert_eq!(layout.input.height, 0);
         assert!(!view.input_ready());
         assert!(

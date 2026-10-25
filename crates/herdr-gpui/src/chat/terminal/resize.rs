@@ -1,6 +1,6 @@
 //! Resize only the rich overlay, keeping the CLI's original cell coordinates.
 
-use super::{ChatPane, InputSize, Layout};
+use super::{ChatPane, InputSize, InputState, Layout};
 use crate::{HerdrWindow, chat::Target};
 use gpui::{prelude::*, *};
 
@@ -31,7 +31,7 @@ impl HerdrWindow {
         layout: Layout,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
-        if layout.awaiting_fit {
+        if layout.state == InputState::AwaitingFit {
             return bar;
         }
         let drag = InputDrag {
