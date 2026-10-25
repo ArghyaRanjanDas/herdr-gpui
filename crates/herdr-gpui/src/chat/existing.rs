@@ -3,10 +3,13 @@
 
 use crate::teleport::{self, Envelope, Host, ProcessInfoResult, SessionKind, SnapshotResult};
 use herdr_chat_protocol::Agent;
-use herdr_client::{ConnectTarget, ScriptLimits, shell_quote};
+use herdr_client::{
+    ConnectTarget, ScriptLimits,
+    protocol::{ClientShellAgent, ClientShellSnapshot},
+    shell_quote,
+};
 use std::{
     collections::{BTreeSet, HashMap},
-    hash::{Hash, Hasher},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -37,12 +40,15 @@ const LIMITS: ScriptLimits = ScriptLimits {
 pub(crate) struct Scope {
     pub(crate) target: ConnectTarget,
     pub(crate) boot: String,
-    pub(crate) generation: (u64, u64),
+    /// How many times the window has switched daemons.
+    pub(crate) selection: u64,
+    /// How many times the selected daemon's connection has started.
+    pub(crate) connection: u64,
 }
 
 /// The process and conversation both matter: one process may open several
 /// subagent transcripts, and a pane may run another agent after this one exits.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct Binding {
     pub(crate) pane_id: String,
     pub(crate) agent: Agent,
@@ -51,18 +57,6 @@ pub(crate) struct Binding {
     pub(crate) pid: u32,
     pub(crate) shell_pid: u32,
     pub(crate) started_ticks: u64,
-}
-
-impl Hash for Binding {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.pane_id.hash(state);
-        std::mem::discriminant(&self.agent).hash(state);
-        self.session_id.hash(state);
-        self.herdr_session.hash(state);
-        self.pid.hash(state);
-        self.shell_pid.hash(state);
-        self.started_ticks.hash(state);
-    }
 }
 
 struct Probe {
@@ -250,10 +244,11 @@ fn inspect_host(
         if session.kind != SessionKind::Id || uuid::Uuid::parse_str(&session.value).is_err() {
             continue;
         }
-        let agent = match (session.agent.as_str(), pane.agent.as_deref()) {
-            ("codex", Some("codex")) => Agent::Codex,
-            ("claude", Some("claude")) => Agent::Claude,
-            _ => continue,
+        // The session and the pane must name the same agent.
+        let Some(agent) =
+            observable(&session.agent).filter(|agent| pane.agent.as_deref() == Some(agent.name()))
+        else {
+            continue;
         };
         selected.push((pane, agent, session));
     }
@@ -293,9 +288,7 @@ fn inspect_host(
     // globbing stays disabled because a process name may contain metacharacters.
     let mut script = String::from("set -f\n[ \"$(uname -s)\" = Linux ] || exit 1\n");
     for pid in pids {
-        script.push_str(&format!(
-            "printf '\\036%s\\n' {pid}\nif [ -r /proc/{pid}/stat ]; then\n  IFS= read -r stat < /proc/{pid}/stat || :\n  fields=${{stat##*) }}\n  set -- $fields\n  if [ \"$#\" -ge 20 ]; then printf '%s %s %s\\n' \"$2\" \"$3\" \"${{20}}\"; fi\nfi\n",
-        ));
+        script.push_str(&STAT_SCRIPT.replace("{pid}", &pid.to_string()));
     }
     let bytes = query(host, &script, cancelled)?;
     let processes: HashMap<_, _> = sections(&bytes)
@@ -313,6 +306,11 @@ fn inspect_host(
         })
         .collect();
     let last = snapshot(host, cancelled)?;
+    let herdr_session = match &scope.target {
+        ConnectTarget::Session { name, .. } => Some(name.clone()),
+        ConnectTarget::Ssh { session, .. } => Some(session.clone()),
+        _ => None,
+    };
     Ok(selected
         .iter()
         .filter_map(|(pane, agent, session)| {
@@ -324,22 +322,51 @@ fn inspect_host(
             if !unchanged {
                 return None;
             }
-            let herdr_session = match &scope.target {
-                ConnectTarget::Session { name, .. } => Some(name.clone()),
-                ConnectTarget::Ssh { session, .. } => Some(session.clone()),
-                _ => None,
-            };
             Some(Binding {
                 pane_id: pane.pane_id.clone(),
                 agent: *agent,
                 session_id: session.value.clone(),
-                herdr_session,
+                herdr_session: herdr_session.clone(),
                 pid,
                 shell_pid: info.shell_pid?,
                 started_ticks: processes.get(&pid)?.started,
             })
         })
         .collect())
+}
+
+/// Prints `{pid}`'s parent, process group, and start time from its
+/// `/proc/<pid>/stat`, after a record separator naming it. The command name
+/// before them may hold spaces or `)`, so the fields are read after its
+/// last `) `.
+const STAT_SCRIPT: &str = r#"printf '\036%s\n' {pid}
+if [ -r /proc/{pid}/stat ]; then
+  IFS= read -r stat < /proc/{pid}/stat || :
+  fields=${stat##*) }
+  set -- $fields
+  if [ "$#" -ge 20 ]; then printf '%s %s %s\n' "$2" "$3" "${20}"; fi
+fi
+"#;
+
+/// The agents in `snapshot` that discovery may observe: Codex and Claude
+/// running in their own CLIs, not through a chat program already.
+pub(crate) fn candidates(snapshot: &ClientShellSnapshot) -> Vec<&ClientShellAgent> {
+    snapshot
+        .agents
+        .iter()
+        .filter(|agent| agent.agent.as_deref().and_then(observable).is_some())
+        .filter(|agent| super::discovery::endpoint(&agent.tokens).is_none())
+        .take(super::MAX_CHATS)
+        .collect()
+}
+
+/// The agent named `name`, when it is one whose running conversation can be
+/// observed: its CLI reports a session id the observer can read.
+pub(crate) fn observable(name: &str) -> Option<Agent> {
+    match name.parse() {
+        Ok(agent @ (Agent::Codex | Agent::Claude)) => Some(agent),
+        _ => None,
+    }
 }
 
 #[derive(Clone, Copy)]

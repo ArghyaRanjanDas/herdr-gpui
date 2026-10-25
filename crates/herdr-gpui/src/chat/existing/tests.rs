@@ -1,11 +1,14 @@
 #![allow(clippy::unwrap_used)]
 use super::*;
 
+mod scripts;
+
 fn scope() -> Scope {
     Scope {
         target: ConnectTarget::Local,
         boot: "boot-a".into(),
-        generation: (1, 1),
+        selection: 1,
+        connection: 1,
     }
 }
 

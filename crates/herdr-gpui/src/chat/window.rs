@@ -51,22 +51,15 @@ impl HerdrWindow {
                     .map(|snapshot| super::existing::Scope {
                         target: endpoint.connection.target.clone(),
                         boot: snapshot.boot_id.clone(),
-                        generation: (self.selection_epoch, endpoint.generation),
+                        selection: self.selection_epoch,
+                        connection: endpoint.generation,
                     })
             });
         let agents = self
             .live
             .snapshot
-            .as_ref()
-            .map(|snapshot| {
-                snapshot
-                    .agents
-                    .iter()
-                    .filter(|agent| matches!(agent.agent.as_deref(), Some("codex" | "claude")))
-                    .filter(|agent| discovery::endpoint(&agent.tokens).is_none())
-                    .take(super::MAX_CHATS)
-                    .collect::<Vec<_>>()
-            })
+            .as_deref()
+            .map(super::existing::candidates)
             .unwrap_or_default();
         let candidates: Vec<_> = agents.iter().map(|agent| agent.pane_id.clone()).collect();
         // A new conversation usually moves its pane's reported state, so the
@@ -333,11 +326,8 @@ impl HerdrWindow {
     }
 
     /// Browser-style zoom while reading a rich conversation or typing in its
-    /// original terminal editor. Other terminal panes keep their Ctrl keys.
-    /// These keys are fixed aliases beside the font size commands' own
-    /// shortcuts, which reach the window through the keymap's actions, so
-    /// they are not in the keymap: there they would take Ctrl-= and Ctrl-0
-    /// from every terminal.
+    /// original terminal editor. Other terminal panes keep their Ctrl keys,
+    /// so these are fixed aliases beside the commands' keymap shortcuts.
     pub(crate) fn chat_zoom_key(
         &mut self,
         event: &KeyDownEvent,
