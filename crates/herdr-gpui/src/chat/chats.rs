@@ -335,6 +335,15 @@ impl ChatPane {
         }
     }
 
+    /// Opens a folded card or folds an open one, then redraws it.
+    pub(crate) fn toggle_expanded(&mut self, id: EntryId) {
+        if !self.expanded.remove(&id) {
+            self.expanded.insert(id);
+        }
+        self.refresh_text();
+        self.remeasure(id);
+    }
+
     /// Folding a card changes what can be selected without changing the
     /// transcript. Reproject only entries whose visible content changed.
     pub(crate) fn refresh_text(&mut self) {

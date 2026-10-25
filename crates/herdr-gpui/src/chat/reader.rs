@@ -65,11 +65,7 @@ impl HerdrWindow {
         if !pane.text_geometry.card_click(entry, position) {
             return;
         }
-        if !pane.expanded.remove(&entry) {
-            pane.expanded.insert(entry);
-        }
-        pane.refresh_text();
-        pane.remeasure(entry);
+        pane.toggle_expanded(entry);
         self.release_chat_text(pane_id);
         cx.stop_propagation();
         self.redraw_terminal(cx);

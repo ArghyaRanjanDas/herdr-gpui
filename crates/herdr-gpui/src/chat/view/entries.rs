@@ -11,6 +11,7 @@ use super::{
         visual::Visuals,
     },
     Hues,
+    disclosure::{HeaderText, chevron},
     layout::{Row, layout_for, side},
     visuals::Frame,
 };
@@ -235,64 +236,29 @@ impl HerdrWindow {
         } else {
             folded_thought(text)
         };
-        let pane_id = pane_id.to_owned();
-        let text_pane = pane_id.clone();
         let id = entry.id;
-        div().child(
-            div()
-                .id(("chat-thought", id.0))
-                .debug_selector(move || format!("chat-thought-{}", id.0))
-                .flex()
-                .gap(px(6.))
-                .cursor_pointer()
-                .text_color(rgb(theme.dimmed(theme.foreground)))
-                .italic()
-                .child(
-                    svg()
-                        .path(if expanded {
-                            "icons/chevron-down.svg"
-                        } else {
-                            "icons/chevron-right.svg"
-                        })
-                        .flex_none()
-                        .mt(px(3.))
-                        .size(px(10.))
-                        .text_color(rgb(theme.muted)),
-                )
-                .child(
-                    div()
-                        .id(("chat-thought-text", id.0))
-                        .min_w_0()
-                        .when(!expanded, |row| row.truncate())
-                        .when(expanded, |row| row.overflow_x_scroll())
-                        .child(self.render_chat_plain_text(
-                            self.chat_text_scope(&pane_id, id, Region::Body(0)),
-                            Cell::default(),
-                            shown,
-                            cx,
-                        )),
-                )
-                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .on_mouse_up(
-                    MouseButton::Left,
-                    cx.listener(move |this, event: &MouseUpEvent, _, cx| {
-                        if !expanded {
-                            this.click_chat_card_text(&text_pane, id, event.position, cx);
-                        }
-                    }),
-                )
-                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                    cx.stop_propagation();
-                    if let Some(pane) = this.chats.pane_mut(&pane_id) {
-                        if !pane.expanded.remove(&id) {
-                            pane.expanded.insert(id);
-                        }
-                        pane.refresh_text();
-                        pane.remeasure(id);
-                    }
-                    cx.notify();
-                })),
-        )
+        let header = div()
+            .id(("chat-thought", id.0))
+            .debug_selector(move || format!("chat-thought-{}", id.0))
+            .flex()
+            .gap(px(6.))
+            .text_color(rgb(theme.dimmed(theme.foreground)))
+            .italic()
+            .child(chevron(expanded, theme).mt(px(3.)))
+            .child(
+                div()
+                    .id(("chat-thought-text", id.0))
+                    .min_w_0()
+                    .when(!expanded, |row| row.truncate())
+                    .when(expanded, |row| row.overflow_x_scroll())
+                    .child(self.render_chat_plain_text(
+                        self.chat_text_scope(pane_id, id, Region::Body(0)),
+                        Cell::default(),
+                        shown,
+                        cx,
+                    )),
+            );
+        div().child(self.chat_disclosure(header, pane_id, id, expanded, HeaderText::Body, cx))
     }
 
     fn render_chat_tool(
@@ -321,80 +287,48 @@ impl HerdrWindow {
             .chats
             .pane(pane_id)
             .is_some_and(|chat| chat.expanded.contains(&entry));
-        let toggle_pane = pane_id.to_owned();
-        let text_pane = pane_id.to_owned();
         // The gutter's dot carries the state's color; the row stays plain.
+        let header = div()
+            .id(("chat-tool", entry.0))
+            .debug_selector(move || format!("chat-tool-{}", entry.0))
+            .flex()
+            .items_center()
+            .gap(px(6.))
+            .child(chevron(expanded, theme))
+            .child(
+                div()
+                    .flex_none()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(rgb(hues.blue))
+                    .child(tool_kind(tool.kind)),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .text_font(&self.config.terminal)
+                    .text_size(px(self.config.terminal.size - 1.))
+                    .text_color(rgb(theme.subtext()))
+                    .child(self.render_chat_plain_text(
+                        self.chat_text_scope(pane_id, entry, Region::Label),
+                        Cell::default(),
+                        tool_header(&tool.title),
+                        cx,
+                    )),
+            )
+            .child(
+                div()
+                    .flex_none()
+                    .text_size(small)
+                    .text_color(rgb(color))
+                    .child(status),
+            );
         div()
             .flex()
             .flex_col()
             .gap(px(2.))
-            .child(
-                div()
-                    .id(("chat-tool", entry.0))
-                    .debug_selector(move || format!("chat-tool-{}", entry.0))
-                    .flex()
-                    .items_center()
-                    .gap(px(6.))
-                    .cursor_pointer()
-                    .child(
-                        svg()
-                            .path(if expanded {
-                                "icons/chevron-down.svg"
-                            } else {
-                                "icons/chevron-right.svg"
-                            })
-                            .flex_none()
-                            .size(px(10.))
-                            .text_color(rgb(theme.muted)),
-                    )
-                    .child(
-                        div()
-                            .flex_none()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(rgb(hues.blue))
-                            .child(tool_kind(tool.kind)),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .truncate()
-                            .text_font(&self.config.terminal)
-                            .text_size(px(self.config.terminal.size - 1.))
-                            .text_color(rgb(theme.subtext()))
-                            .child(self.render_chat_plain_text(
-                                self.chat_text_scope(pane_id, entry, Region::Label),
-                                Cell::default(),
-                                tool_header(&tool.title),
-                                cx,
-                            )),
-                    )
-                    .child(
-                        div()
-                            .flex_none()
-                            .text_size(small)
-                            .text_color(rgb(color))
-                            .child(status),
-                    )
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_mouse_up(
-                        MouseButton::Left,
-                        cx.listener(move |this, event: &MouseUpEvent, _, cx| {
-                            this.click_chat_card_text(&text_pane, entry, event.position, cx);
-                        }),
-                    )
-                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                        cx.stop_propagation();
-                        if let Some(pane) = this.chats.pane_mut(&toggle_pane) {
-                            if !pane.expanded.remove(&entry) {
-                                pane.expanded.insert(entry);
-                            }
-                            pane.refresh_text();
-                            pane.remeasure(entry);
-                        }
-                        cx.notify();
-                    })),
-            )
+            .child(self.chat_disclosure(header, pane_id, entry, expanded, HeaderText::Label, cx))
             .children(
                 page_written(tool).map(|path| self.render_chat_file_page(pane_id, entry, path, cx)),
             )
@@ -596,9 +530,25 @@ impl HerdrWindow {
             .chats
             .pane(pane_id)
             .is_some_and(|chat| chat.expanded.contains(&id));
-        let pane_id = pane_id.to_owned();
-        let toggle_pane = pane_id.clone();
-        let text_pane = pane_id.clone();
+        let header = div()
+            .id(("chat-notice", id.0))
+            .debug_selector(move || format!("chat-notice-{}", id.0))
+            .flex()
+            .items_center()
+            .min_w_0()
+            .gap(px(6.))
+            .child(chevron(expanded, theme))
+            .child(
+                div()
+                    .min_w_0()
+                    .truncate()
+                    .child(self.render_chat_plain_text(
+                        self.chat_text_scope(pane_id, id, Region::Body(0)),
+                        Cell::default(),
+                        notice_label(text),
+                        cx,
+                    )),
+            );
         div()
             .flex()
             .flex_col()
@@ -613,56 +563,7 @@ impl HerdrWindow {
                         .p(px(4.))
                 },
             )
-            .child(
-                div()
-                    .id(("chat-notice", id.0))
-                    .debug_selector(move || format!("chat-notice-{}", id.0))
-                    .flex()
-                    .items_center()
-                    .min_w_0()
-                    .gap(px(6.))
-                    .cursor_pointer()
-                    .child(
-                        svg()
-                            .path(if expanded {
-                                "icons/chevron-down.svg"
-                            } else {
-                                "icons/chevron-right.svg"
-                            })
-                            .flex_none()
-                            .size(px(10.))
-                            .text_color(rgb(theme.muted)),
-                    )
-                    .child(
-                        div()
-                            .min_w_0()
-                            .truncate()
-                            .child(self.render_chat_plain_text(
-                                self.chat_text_scope(&pane_id, id, Region::Body(0)),
-                                Cell::default(),
-                                notice_label(text),
-                                cx,
-                            )),
-                    )
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_mouse_up(
-                        MouseButton::Left,
-                        cx.listener(move |this, event: &MouseUpEvent, _, cx| {
-                            this.click_chat_card_text(&text_pane, id, event.position, cx);
-                        }),
-                    )
-                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                        cx.stop_propagation();
-                        if let Some(pane) = this.chats.pane_mut(&toggle_pane) {
-                            if !pane.expanded.remove(&id) {
-                                pane.expanded.insert(id);
-                            }
-                            pane.refresh_text();
-                            pane.remeasure(id);
-                        }
-                        cx.notify();
-                    })),
-            )
+            .child(self.chat_disclosure(header, pane_id, id, expanded, HeaderText::Label, cx))
             .when(expanded, |card| {
                 card.child(
                     div()
@@ -683,7 +584,7 @@ impl HerdrWindow {
                                 // Imported content is inert source text, including
                                 // XML, commands, URLs, and output-file paths.
                                 .child(self.render_chat_plain_text(
-                                    self.chat_text_scope(&pane_id, id, Region::Details),
+                                    self.chat_text_scope(pane_id, id, Region::Details),
                                     Cell::default(),
                                     details.to_owned(),
                                     cx,
