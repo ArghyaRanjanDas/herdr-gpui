@@ -327,7 +327,7 @@ impl ChatPane {
         self.prepared.set_expanded(&self.expanded);
         self.prepared.update(self.session.transcript(), &keys);
         self.selection.validate(self.prepared.text());
-        self.widgets.retain(&keys);
+        self.widgets.retain(&self.prepared);
         self.list_keys = keys;
     }
 

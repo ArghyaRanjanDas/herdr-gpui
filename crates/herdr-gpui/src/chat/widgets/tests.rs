@@ -1,5 +1,7 @@
 use super::*;
 
+mod retention;
+
 const FORM: &str = r#"{
   "title":"Choose a run",
   "components":[
@@ -141,7 +143,7 @@ fn forms_keep_edits_across_renders_but_reset_on_source_change_and_prune() {
         state.edit(key, &changed).values["note"],
         Value::Text("revised".into())
     );
-    state.retain(&[(EntryId(9), 1)]);
+    state.retain(&crate::chat::prepared::Prepared::default());
     assert!(state.form(key, &changed).is_none());
 }
 
