@@ -2,8 +2,11 @@
 //! Codex process can hold several child-agent rollouts: newest-file guessing
 //! would silently show the wrong conversation.
 
-use super::{Error, Options, Result};
-use crate::{agents::Agent, mirror::transcript::Source};
+use super::{Error, Result};
+use crate::{
+    cli::ObserveOptions,
+    mirror::transcript::{Source, TranscriptAgent},
+};
 use serde_json::Value;
 use std::{
     fs::{self, File},
@@ -24,19 +27,23 @@ pub(super) struct Identity {
     process: PathBuf,
     started: u64,
     file: File,
-    agent: Agent,
+    agent: TranscriptAgent,
     session: String,
 }
 
 impl Identity {
-    pub(super) fn open(options: &Options) -> Result<Self> {
+    pub(super) fn open(options: &ObserveOptions) -> Result<Self> {
         if !cfg!(target_os = "linux") {
             return Err(Error::Unsupported);
         }
         Self::at(options, Path::new("/proc"), std::env::home_dir().as_deref())
     }
 
-    pub(super) fn at(options: &Options, proc_root: &Path, home: Option<&Path>) -> Result<Self> {
+    pub(super) fn at(
+        options: &ObserveOptions,
+        proc_root: &Path,
+        home: Option<&Path>,
+    ) -> Result<Self> {
         let process = proc_root.join(options.pid.to_string());
         if start_ticks(&process)? != options.started {
             return Err(Error::ProcessChanged);
@@ -55,8 +62,8 @@ impl Identity {
         }
         // Claude opens its log only while writing. Search exact UUID names
         // within its private projects directory; never recurse over histories.
-        if options.agent == Agent::Claude
-            && let Some(base) = config_directory(&process, home, Agent::Claude)?
+        if options.agent == TranscriptAgent::Claude
+            && let Some(base) = config_directory(&process, home, TranscriptAgent::Claude)?
             && let Ok(projects) = fs::read_dir(base.join("projects"))
         {
             for project in projects.take(MAX_PROJECTS).flatten() {
@@ -72,7 +79,7 @@ impl Identity {
         // A daemon-backed Codex TUI has no rollout descriptor of its own.
         // Its UUIDv7 bounds the lookup to three date directories; the exact
         // filename and header still have to identify the advertised thread.
-        if options.agent == Agent::Codex && candidates.is_empty() {
+        if options.agent == TranscriptAgent::Codex && candidates.is_empty() {
             candidates = codex_rollouts(&process, home, options)?;
         }
         let matches: Vec<_> = candidates
@@ -131,12 +138,15 @@ impl Identity {
 
 /// Read only the known config-directory override from the verified process.
 /// Other environment variables never leave this bounded buffer or get logged.
-fn config_directory(process: &Path, home: Option<&Path>, agent: Agent) -> Result<Option<PathBuf>> {
+fn config_directory(
+    process: &Path,
+    home: Option<&Path>,
+    agent: TranscriptAgent,
+) -> Result<Option<PathBuf>> {
     const MAX_ENVIRONMENT: u64 = 128 * 1024;
     let (variable, default): (&[u8], &str) = match agent {
-        Agent::Claude => (b"CLAUDE_CONFIG_DIR=", ".claude"),
-        Agent::Codex => (b"CODEX_HOME=", ".codex"),
-        _ => return Ok(None),
+        TranscriptAgent::Claude => (b"CLAUDE_CONFIG_DIR=", ".claude"),
+        TranscriptAgent::Codex => (b"CODEX_HOME=", ".codex"),
     };
     let mut bytes = Vec::new();
     match File::open(process.join("environ")) {
@@ -166,7 +176,11 @@ fn config_directory(process: &Path, home: Option<&Path>, agent: Agent) -> Result
     Ok(Some(path))
 }
 
-fn codex_rollouts(process: &Path, home: Option<&Path>, options: &Options) -> Result<Vec<PathBuf>> {
+fn codex_rollouts(
+    process: &Path,
+    home: Option<&Path>,
+    options: &ObserveOptions,
+) -> Result<Vec<PathBuf>> {
     let uuid = uuid::Uuid::parse_str(&options.session)?;
     if uuid.get_version() != Some(uuid::Version::SortRand) {
         return Err(Error::NotUuidV7);
@@ -177,7 +191,7 @@ fn codex_rollouts(process: &Path, home: Option<&Path>, options: &Options) -> Res
         .and_then(|seconds| chrono::DateTime::from_timestamp(seconds, nanos))
         .ok_or(Error::TimestampRange)?
         .date_naive();
-    let Some(base) = config_directory(process, home, Agent::Codex)? else {
+    let Some(base) = config_directory(process, home, TranscriptAgent::Codex)? else {
         return Ok(Vec::new());
     };
     let mut candidates = Vec::new();
@@ -222,20 +236,19 @@ fn start_ticks(process: &Path) -> Result<u64> {
         .map_err(Error::InvalidStartTime)
 }
 
-fn candidate_name(path: &Path, options: &Options) -> bool {
+fn candidate_name(path: &Path, options: &ObserveOptions) -> bool {
     let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
         return false;
     };
     match options.agent {
-        Agent::Codex => {
+        TranscriptAgent::Codex => {
             name.starts_with("rollout-") && name.ends_with(&format!("-{}.jsonl", options.session))
         }
-        Agent::Claude => name == format!("{}.jsonl", options.session),
-        _ => false,
+        TranscriptAgent::Claude => name == format!("{}.jsonl", options.session),
     }
 }
 
-fn matches_session(path: &Path, options: &Options) -> io::Result<bool> {
+fn matches_session(path: &Path, options: &ObserveOptions) -> io::Result<bool> {
     // Checked before opening, since opening a FIFO can block; `matches_file`
     // checks the opened descriptor again in case the path was replaced.
     if !fs::metadata(path)?.is_file() {
@@ -244,7 +257,7 @@ fn matches_session(path: &Path, options: &Options) -> io::Result<bool> {
     matches_file(File::open(path)?, options.agent, &options.session)
 }
 
-fn matches_file(mut file: File, agent: Agent, session: &str) -> io::Result<bool> {
+fn matches_file(mut file: File, agent: TranscriptAgent, session: &str) -> io::Result<bool> {
     if !file.metadata()?.is_file() {
         return Ok(false);
     }
@@ -258,12 +271,12 @@ fn matches_file(mut file: File, agent: Agent, session: &str) -> io::Result<bool>
             continue;
         };
         let id = match agent {
-            Agent::Codex if record["type"] == "session_meta" => record["payload"]
+            TranscriptAgent::Codex if record["type"] == "session_meta" => record["payload"]
                 .get("id")
                 .or_else(|| record["payload"].get("session_id"))
                 .and_then(Value::as_str),
-            Agent::Claude => record.get("sessionId").and_then(Value::as_str),
-            _ => None,
+            TranscriptAgent::Claude => record.get("sessionId").and_then(Value::as_str),
+            TranscriptAgent::Codex => None,
         };
         if let Some(id) = id {
             return Ok(id == session);

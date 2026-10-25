@@ -8,8 +8,9 @@ use super::{TEXT, limited, string};
 const SUMMARY: usize = 160;
 const CUT: &str = "\n… (source details truncated)";
 
+/// A notice for a user record a harness wrote, or `None` for a person's own.
 pub(super) fn project(record: &Value, content: &str) -> Option<EntryKind> {
-    if string(record, "type") != "user" || content.is_empty() {
+    if content.is_empty() {
         return None;
     }
     let system = string(record, "promptSource") == "system" || record["isMeta"] == true;

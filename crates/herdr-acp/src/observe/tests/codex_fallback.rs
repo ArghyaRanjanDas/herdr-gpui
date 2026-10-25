@@ -4,10 +4,10 @@ use super::*;
 // from the process start time (a resumed process can be months newer).
 const CODEX_SESSION: &str = "01941f29-7c00-7000-8000-000000000001";
 
-fn codex_options() -> Options {
-    Options {
+fn codex_options() -> ObserveOptions {
+    ObserveOptions {
         session: CODEX_SESSION.into(),
-        ..options(Agent::Codex)
+        ..options(TranscriptAgent::Codex)
     }
 }
 
@@ -87,7 +87,12 @@ fn codex_fallback_uses_only_its_running_process_home_override() {
     let found = identity::Identity::at(&codex_options(), dir.path(), Some(dir.path())).unwrap();
     assert_eq!(found.path, expected);
     assert!(
-        identity::Identity::at(&options(Agent::Codex), dir.path(), Some(dir.path())).is_err(),
+        identity::Identity::at(
+            &options(TranscriptAgent::Codex),
+            dir.path(),
+            Some(dir.path())
+        )
+        .is_err(),
         "non-v7 IDs cannot trigger a date lookup"
     );
 }

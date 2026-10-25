@@ -10,7 +10,7 @@ mod tests;
 pub use error::{Error, Result};
 
 use crate::{
-    agents::Agent,
+    cli::ObserveOptions,
     mirror::Mirror,
     session::{Attach, ConnId, Input},
 };
@@ -23,15 +23,6 @@ use std::{
     io, thread,
     time::{Duration, Instant},
 };
-
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) struct Options {
-    pub agent: Agent,
-    pub session: String,
-    pub pid: u32,
-    pub started: u64,
-    pub pane: Option<String>,
-}
 
 const POLL: Duration = Duration::from_secs(1);
 const CONN: ConnId = ConnId(1);
@@ -53,7 +44,7 @@ fn inputs() -> io::Result<Receiver<ClientMessage>> {
     Ok(receiver)
 }
 
-pub(crate) fn run(options: Options) -> anyhow::Result<()> {
+pub(crate) fn run(options: ObserveOptions) -> anyhow::Result<()> {
     let receiver = inputs()?;
     let greeting = receiver.recv_timeout(Duration::from_secs(5))?;
     if !matches!(

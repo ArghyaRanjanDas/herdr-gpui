@@ -36,7 +36,7 @@ fn environment() -> Value {
 
 #[test]
 fn codex_harness_environment_is_a_compact_notice_with_exact_source_details() {
-    let transcript = parse(Agent::Codex, &lines(&[environment()]), 0);
+    let transcript = parse(TranscriptAgent::Codex, &lines(&[environment()]), 0);
     assert!(matches!(
         &transcript.entries[0].kind,
         EntryKind::Notice { text, details: Some(details), .. }
@@ -55,7 +55,7 @@ fn verified_harness_families_are_system_notices_without_tag_heuristics() {
         "future.harness_context",
     ] {
         let record = message(vec![input("Opaque system source")], &[kind], &["harness"]);
-        let transcript = parse(Agent::Codex, &lines(&[record]), 0);
+        let transcript = parse(TranscriptAgent::Codex, &lines(&[record]), 0);
         assert!(matches!(&transcript.entries[0].kind,
             EntryKind::Notice { text, details: Some(details), .. }
             if text == "System context" && details == "Opaque system source"
@@ -82,7 +82,7 @@ fn legacy_native_context_requires_exact_aligned_kinds_and_no_per_item_metadata()
             if let Some(authored) = authored {
                 record["metadata"] = json!({"client_authored":authored});
             }
-            let transcript = parse(Agent::Codex, &lines(&[record]), 0);
+            let transcript = parse(TranscriptAgent::Codex, &lines(&[record]), 0);
             assert!(matches!(&transcript.entries[0].kind,
                 EntryKind::Notice { text, details: Some(details), .. }
                 if text == label && details == ENVIRONMENT
@@ -102,7 +102,7 @@ fn legacy_native_context_requires_exact_aligned_kinds_and_no_per_item_metadata()
         rejected[3]["payload"]["internal_chat_message_metadata_passthrough"]["content_item_kinds"] =
             json!([kind, kind]);
         for record in rejected {
-            let transcript = parse(Agent::Codex, &lines(&[record]), 0);
+            let transcript = parse(TranscriptAgent::Codex, &lines(&[record]), 0);
             assert!(
                 matches!(&transcript.entries[0].kind, EntryKind::User { text } if text == ENVIRONMENT)
             );
@@ -115,7 +115,7 @@ fn legacy_native_context_requires_exact_aligned_kinds_and_no_per_item_metadata()
             .as_object_mut()
             .unwrap()
             .remove("content_item_metadata");
-        let transcript = parse(Agent::Codex, &lines(&[record]), 0);
+        let transcript = parse(TranscriptAgent::Codex, &lines(&[record]), 0);
         assert!(matches!(
             &transcript.entries[0].kind,
             EntryKind::User { .. }
@@ -141,7 +141,7 @@ fn codex_mixed_user_and_harness_content_preserves_authorship_order_and_ids() {
         &["user", "harness", "user", "user"],
     );
     let bytes = lines(&[record]);
-    let transcript = parse(Agent::Codex, &bytes, 20);
+    let transcript = parse(TranscriptAgent::Codex, &bytes, 20);
     assert!(matches!(&transcript.entries[0].kind, EntryKind::User { text } if text == "Before"));
     assert!(matches!(
         &transcript.entries[1].kind,
@@ -157,11 +157,11 @@ fn codex_mixed_user_and_harness_content_preserves_authorship_order_and_ids() {
     let next = lines(&[message(vec![input("Next")], &["user.text"], &["user"])]);
     appended.extend_from_slice(&next[..next.len() - 1]);
     assert_eq!(
-        parse(Agent::Codex, &appended, 20).entries,
+        parse(TranscriptAgent::Codex, &appended, 20).entries,
         transcript.entries
     );
     appended.push(b'\n');
-    let updated = parse(Agent::Codex, &appended, 20);
+    let updated = parse(TranscriptAgent::Codex, &appended, 20);
     assert_eq!(
         &updated.entries[..transcript.entries.len()],
         transcript.entries.as_slice()
@@ -203,14 +203,14 @@ fn codex_environment_words_cannot_replace_missing_or_malformed_provenance() {
         json!([{"provenance":{"type":true}}]);
     cases.push(malformed);
     for record in cases {
-        let transcript = parse(Agent::Codex, &lines(&[record]), 0);
+        let transcript = parse(TranscriptAgent::Codex, &lines(&[record]), 0);
         assert!(
             matches!(&transcript.entries[0].kind, EntryKind::User { text } if text == ENVIRONMENT)
         );
     }
     let mut assistant = environment();
     assistant["payload"]["role"] = json!("assistant");
-    let transcript = parse(Agent::Codex, &lines(&[assistant]), 0);
+    let transcript = parse(TranscriptAgent::Codex, &lines(&[assistant]), 0);
     assert!(
         matches!(&transcript.entries[0].kind, EntryKind::Agent { text } if text == ENVIRONMENT)
     );
@@ -233,7 +233,7 @@ fn attachment(url: Value) -> Value {
 fn codex_embedded_attachment_renders_image_keeps_caption_and_preserves_wrapper_source() {
     let record = attachment(image());
     let original_text = text(&record["payload"]["content"]);
-    let transcript = parse(Agent::Codex, &lines(&[record]), 0);
+    let transcript = parse(TranscriptAgent::Codex, &lines(&[record]), 0);
     assert!(matches!(
         &transcript.entries[0].kind,
         EntryKind::Notice { text, details: Some(details), .. }
@@ -266,7 +266,7 @@ fn codex_invalid_or_external_images_show_unavailable_without_base64_or_losing_us
     ] {
         let record = attachment(json!({"type":"input_image", "image_url":url}));
         let original_text = text(&record["payload"]["content"]);
-        let transcript = parse(Agent::Codex, &lines(&[record]), 0);
+        let transcript = parse(TranscriptAgent::Codex, &lines(&[record]), 0);
         assert!(
             matches!(&transcript.entries[0].kind, EntryKind::Notice { details: Some(details), .. } if details == &original_text)
         );
@@ -289,7 +289,7 @@ fn codex_invalid_or_external_images_show_unavailable_without_base64_or_losing_us
 fn codex_pasted_attachment_wrappers_stay_user_text() {
     let literal = "<image name=[Image #1] path=\"/never-opened/screenshot.png\"></image> [Image #1]Keep these words";
     let transcript = parse(
-        Agent::Codex,
+        TranscriptAgent::Codex,
         &lines(&[message(vec![input(literal)], &["user.text"], &["user"])]),
         0,
     );
@@ -300,7 +300,7 @@ fn codex_pasted_attachment_wrappers_stay_user_text() {
 fn codex_wrapper_cleanup_requires_matching_provenance_and_does_not_strip_other_references() {
     let mut missing = attachment(image());
     missing["payload"]["internal_chat_message_metadata_passthrough"] = Value::Null;
-    let transcript = parse(Agent::Codex, &lines(&[missing]), 0);
+    let transcript = parse(TranscriptAgent::Codex, &lines(&[missing]), 0);
     assert!(
         matches!(&transcript.entries[0].kind, EntryKind::User { text } if text.starts_with("<image name="))
     );
@@ -314,7 +314,7 @@ fn codex_wrapper_cleanup_requires_matching_provenance_and_does_not_strip_other_r
 
     let mut other = attachment(image());
     other["payload"]["content"][3]["text"] = json!("[Image #2]Keep this reference");
-    let transcript = parse(Agent::Codex, &lines(&[other]), 0);
+    let transcript = parse(TranscriptAgent::Codex, &lines(&[other]), 0);
     assert!(
         matches!(&transcript.entries[2].kind, EntryKind::User { text } if text == "[Image #2]Keep this reference")
     );
@@ -329,7 +329,7 @@ fn codex_image_retention_obeys_the_media_budget_and_wire_frame_limit() {
             &["user.image"], &["user"],
         ))
         .collect::<Vec<_>>();
-    let transcript = parse(Agent::Codex, &lines(&records), 0);
+    let transcript = parse(TranscriptAgent::Codex, &lines(&records), 0);
     let kept: usize = transcript
         .entries
         .iter()
@@ -366,7 +366,7 @@ fn codex_image_records_larger_than_one_mebibyte_keep_the_image_and_caption() {
     );
     let bytes = lines(&[record]);
     assert!(bytes.len() > RECORD && bytes.len() < TAIL as usize);
-    let transcript = parse(Agent::Codex, &bytes, 0);
+    let transcript = parse(TranscriptAgent::Codex, &bytes, 0);
     assert!(
         matches!(&transcript.entries[0].kind, EntryKind::Image { image, .. } if image.data == data)
     );
@@ -387,7 +387,7 @@ fn codex_oversized_image_data_has_a_compact_fallback_and_keeps_its_caption() {
         &["user.image", "user.text"],
         &["user", "user"],
     );
-    let transcript = parse(Agent::Codex, &lines(&[record]), 0);
+    let transcript = parse(TranscriptAgent::Codex, &lines(&[record]), 0);
     assert!(
         matches!(&transcript.entries[0].kind, EntryKind::Notice { text, details: Some(details), .. } if text == "Image unavailable" && details.len() < 256 && !details.contains("AAAA"))
     );
@@ -416,7 +416,7 @@ fn codex_large_record_exception_requires_typed_images_and_never_exceeds_the_tail
     wrong_record["type"] = json!("event_msg");
     for oversized in [ordinary, huge_image, wrong_record] {
         let transcript = parse(
-            Agent::Codex,
+            TranscriptAgent::Codex,
             &lines(&[
                 oversized,
                 message(vec![input("Still visible")], &["user.text"], &["user"]),

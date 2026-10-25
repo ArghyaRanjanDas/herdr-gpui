@@ -1,6 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use super::*;
+use crate::mirror::transcript::TranscriptAgent;
 use std::{fs, path::Path};
 
 mod codex_fallback;
@@ -8,8 +9,8 @@ mod errors;
 
 const SESSION: &str = "01234567-89ab-4cde-8123-456789abcdef";
 
-fn options(agent: Agent) -> Options {
-    Options {
+fn options(agent: TranscriptAgent) -> ObserveOptions {
+    ObserveOptions {
         agent,
         session: SESSION.into(),
         pid: 123,
@@ -60,7 +61,8 @@ fn selects_parent_session_among_child_rollout_descriptors() {
     );
     std::os::unix::fs::symlink(original.clone(), dir.path().join("123/fd/55")).unwrap();
     std::os::unix::fs::symlink(child, dir.path().join("123/fd/56")).unwrap();
-    let binding = identity::Identity::at(&options(Agent::Codex), dir.path(), None).unwrap();
+    let binding =
+        identity::Identity::at(&options(TranscriptAgent::Codex), dir.path(), None).unwrap();
     assert_eq!(binding.path, original);
     stat(dir.path(), 457);
     assert!(
@@ -80,7 +82,7 @@ fn a_matching_filename_cannot_replace_session_identity() {
         "another-thread",
     );
     std::os::unix::fs::symlink(fake, dir.path().join("123/fd/55")).unwrap();
-    assert!(identity::Identity::at(&options(Agent::Codex), dir.path(), None).is_err());
+    assert!(identity::Identity::at(&options(TranscriptAgent::Codex), dir.path(), None).is_err());
 }
 
 #[test]
@@ -95,8 +97,12 @@ fn claude_closed_log_is_found_by_exact_session_and_verified_header() {
         format!("{{\"type\":\"user\",\"sessionId\":\"{SESSION}\"}}\n"),
     )
     .unwrap();
-    let found =
-        identity::Identity::at(&options(Agent::Claude), dir.path(), Some(dir.path())).unwrap();
+    let found = identity::Identity::at(
+        &options(TranscriptAgent::Claude),
+        dir.path(),
+        Some(dir.path()),
+    )
+    .unwrap();
     assert_eq!(found.path, path);
     fs::remove_dir_all(dir.path().join("123")).unwrap();
     assert!(found.check().is_err());
@@ -106,7 +112,7 @@ fn claude_closed_log_is_found_by_exact_session_and_verified_header() {
 fn stale_process_is_rejected_before_history_is_opened() {
     let dir = tempfile::tempdir().unwrap();
     stat(dir.path(), 455);
-    assert!(identity::Identity::at(&options(Agent::Codex), dir.path(), None).is_err());
+    assert!(identity::Identity::at(&options(TranscriptAgent::Codex), dir.path(), None).is_err());
 }
 
 #[test]
@@ -130,8 +136,12 @@ fn claude_uses_its_running_process_config_directory() {
         ),
     )
     .unwrap();
-    let found =
-        identity::Identity::at(&options(Agent::Claude), dir.path(), Some(dir.path())).unwrap();
+    let found = identity::Identity::at(
+        &options(TranscriptAgent::Claude),
+        dir.path(),
+        Some(dir.path()),
+    )
+    .unwrap();
     assert_eq!(found.path, path);
 }
 
@@ -140,7 +150,11 @@ fn oversized_process_environments_are_rejected_without_echoing_values() {
     let dir = tempfile::tempdir().unwrap();
     stat(dir.path(), 456);
     fs::write(dir.path().join("123/environ"), vec![b'x'; 128 * 1024 + 1]).unwrap();
-    let result = identity::Identity::at(&options(Agent::Claude), dir.path(), Some(dir.path()));
+    let result = identity::Identity::at(
+        &options(TranscriptAgent::Claude),
+        dir.path(),
+        Some(dir.path()),
+    );
     let error = match result {
         Ok(_) => panic!("oversized environment was accepted"),
         Err(error) => error,
@@ -160,7 +174,8 @@ fn replacement_file_cannot_swap_an_attached_conversation() {
         SESSION,
     );
     std::os::unix::fs::symlink(&path, dir.path().join("123/fd/55")).unwrap();
-    let identity = identity::Identity::at(&options(Agent::Codex), dir.path(), None).unwrap();
+    let identity =
+        identity::Identity::at(&options(TranscriptAgent::Codex), dir.path(), None).unwrap();
     let mut source = identity.source().unwrap();
     let saved = dir.path().join("original.jsonl");
     fs::rename(&path, &saved).unwrap();
@@ -192,7 +207,7 @@ fn cli_accepts_only_explicit_valid_process_and_session_identity() {
     let parse = |args: &[&str]| crate::cli::parse(args.iter().map(std::ffi::OsString::from));
     assert_eq!(
         parse(&["observe", "codex", SESSION, "123", "456", "--pane", "w1:p1"]).unwrap(),
-        crate::cli::Parsed::Observe(options(Agent::Codex))
+        crate::cli::Parsed::Observe(options(TranscriptAgent::Codex))
     );
     for args in [
         vec!["observe", "codex", "../../secret", "123", "456"],

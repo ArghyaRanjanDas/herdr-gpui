@@ -42,7 +42,7 @@ fn exact_async_reply_preserves_free_text_and_source_without_replaying_questions(
         "A free-text alternative",
     )]);
     let transcript = parse(
-        Agent::Codex,
+        TranscriptAgent::Codex,
         &lines(&[request("call1", &["Which approach?"]), message(&[&source])]),
         0,
     );
@@ -70,7 +70,7 @@ fn multiple_answers_and_mixed_user_blocks_preserve_order_and_ids() {
         reply("call1", 0, "First question?", "α"),
     ]);
     let transcript = parse(
-        Agent::Codex,
+        TranscriptAgent::Codex,
         &lines(&[
             request("call1", &["First question?", "Second question?"]),
             message(&["Before", &source, "After"]),
@@ -124,10 +124,10 @@ fn unmatched_or_unverified_replies_stay_literal_user_text() {
             .as_str()
             .unwrap()
             .to_owned();
-        let transcript = parse(Agent::Codex, &lines(&[request, record]), 0);
+        let transcript = parse(TranscriptAgent::Codex, &lines(&[request, record]), 0);
         assert!(matches!(&transcript.entries[1].kind, EntryKind::User { text } if text == &source));
     }
-    let transcript = parse(Agent::Codex, &lines(&[message(&[&valid])]), 0);
+    let transcript = parse(TranscriptAgent::Codex, &lines(&[message(&[&valid])]), 0);
     assert!(matches!(
         &transcript.entries[0].kind,
         EntryKind::User { .. }
@@ -146,7 +146,7 @@ fn malformed_batches_are_atomic_and_answered_ids_are_consumed() {
         ]),
     ] {
         let transcript = parse(
-            Agent::Codex,
+            TranscriptAgent::Codex,
             &lines(&[
                 request("call1", &["Question?", "Another question?"]),
                 message(&[&invalid]),
@@ -175,7 +175,7 @@ fn optional_producer_fields_do_not_hide_a_correlated_reply() {
     reply["optional_metadata"] = json!({"future":true});
     let source = envelope(vec![reply]);
     let transcript = parse(
-        Agent::Codex,
+        TranscriptAgent::Codex,
         &lines(&[request("call1", &["Question?"]), message(&[&source])]),
         0,
     );
@@ -193,14 +193,14 @@ fn answer_count_and_source_limits_fall_back_to_bounded_user_text() {
             .collect(),
     );
     let transcript = parse(
-        Agent::Codex,
+        TranscriptAgent::Codex,
         &lines(&[request("call1", &questions), message(&[&source])]),
         0,
     );
     assert!(matches!(&transcript.entries[1].kind, EntryKind::User { text } if text == &source));
     let source = envelope(vec![reply("call1", 0, "Question?", &"α".repeat(TEXT))]);
     let transcript = parse(
-        Agent::Codex,
+        TranscriptAgent::Codex,
         &lines(&[request("call1", &["Question?"]), message(&[&source])]),
         0,
     );
@@ -212,7 +212,7 @@ fn answer_count_and_source_limits_fall_back_to_bounded_user_text() {
 fn projected_question_and_answer_text_counts_toward_retention() {
     let source = envelope(vec![reply("call1", 0, "Question?", "Answer")]);
     let transcript = parse(
-        Agent::Codex,
+        TranscriptAgent::Codex,
         &lines(&[request("call1", &["Question?"]), message(&[&source])]),
         0,
     );

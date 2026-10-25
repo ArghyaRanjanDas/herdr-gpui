@@ -22,7 +22,7 @@ fn compacted(answer: &Value) -> Value {
 fn native_retained_answers_work_without_the_original_request() {
     let record = retained("oldcall", "Which approach?", "Free text");
     for record in [record.clone(), compacted(&record)] {
-        let transcript = parse(Agent::Codex, &lines(&[record]), 100);
+        let transcript = parse(TranscriptAgent::Codex, &lines(&[record]), 100);
         assert!(transcript.entries.iter().any(|entry| matches!(&entry.kind,
             EntryKind::Notice { answers, details: Some(source), .. }
             if answers == &vec![QuestionAnswer { question:"Which approach?".into(), answer:"Free text".into() }] && source.contains("oldcall")
@@ -47,7 +47,7 @@ fn partial_retained_overlap_keeps_new_rows_in_native_order() {
         {"question":"Second?", "answer":""},
         {"question":"Third?", "answer":"Three"},
     ]);
-    let transcript = parse(Agent::Codex, &lines(&[first, more]), 0);
+    let transcript = parse(TranscriptAgent::Codex, &lines(&[first, more]), 0);
     assert!(matches!(&transcript.entries[1].kind,
         EntryKind::Notice { answers, .. } if answers.iter().map(|a| a.question.as_str()).eq(["Second?", "Third?"]) && answers[0].answer.is_empty()
     ));
@@ -63,7 +63,7 @@ fn interleaved_native_retained_raw_and_compacted_answers_do_not_repeat_cards_or_
     ] {
         let mut records = vec![request("call1", &["Question?"])];
         records.extend(order);
-        let transcript = parse(Agent::Codex, &lines(&records), 0);
+        let transcript = parse(TranscriptAgent::Codex, &lines(&records), 0);
         assert_eq!(transcript.entries.iter().filter(|entry| matches!(&entry.kind, EntryKind::Notice { answers, .. } if !answers.is_empty())).count(), 1);
         assert!(
             !transcript
@@ -83,7 +83,7 @@ fn retained_answers_correlate_later_raw_replies_without_the_old_tool() {
     let changed = envelope(vec![reply("call1", 0, "Question?", "Updated")]);
     let unmatched = envelope(vec![reply("call1", 0, "Different question?", "Other")]);
     let transcript = parse(
-        Agent::Codex,
+        TranscriptAgent::Codex,
         &lines(&[
             retained("call1", "Question?", "Answer"),
             message(&[&same]),
@@ -104,7 +104,7 @@ fn retained_answers_correlate_later_raw_replies_without_the_old_tool() {
 #[test]
 fn empty_native_compaction_has_no_blank_source_expander() {
     let transcript = parse(
-        Agent::Codex,
+        TranscriptAgent::Codex,
         &lines(&[json!({"type":"compacted", "payload":{"message":""}})]),
         0,
     );
@@ -119,7 +119,7 @@ fn changed_answers_remain_visible_and_explicit_user_pastes_stay_literal() {
     let mut pasted = message(&[&source]);
     pasted["metadata"]["client_authored"] = json!(true);
     let transcript = parse(
-        Agent::Codex,
+        TranscriptAgent::Codex,
         &lines(&[
             request("call1", &["Question?"]),
             retained("call1", "Question?", "Original answer"),
@@ -179,14 +179,14 @@ fn retained_rows_are_typed_bounded_and_not_inferred_from_pasted_json() {
     oversized["payload"]["questions"][0]["answer"] = json!("α".repeat(TEXT));
     invalid.push(oversized);
     for record in invalid {
-        let transcript = parse(Agent::Codex, &lines(&[record]), 0);
+        let transcript = parse(TranscriptAgent::Codex, &lines(&[record]), 0);
         assert!(matches!(&transcript.entries[0].kind,
             EntryKind::Notice { answers, text, details: Some(source), .. }
             if answers.is_empty() && text == "Retained question context" && source.len() <= TEXT
         ));
     }
     let source = record.to_string();
-    let transcript = parse(Agent::Codex, &lines(&[message(&[&source])]), 0);
+    let transcript = parse(TranscriptAgent::Codex, &lines(&[message(&[&source])]), 0);
     assert!(matches!(&transcript.entries[0].kind, EntryKind::User { text } if text == &source));
 }
 
@@ -197,7 +197,7 @@ fn compaction_only_exposes_its_bounded_message_and_preserves_later_entries() {
         "replacement_history":[{"type":"message", "role":"user", "content":[{"type":"input_text","text":"Hidden history"}]}]
     }});
     let transcript = parse(
-        Agent::Codex,
+        TranscriptAgent::Codex,
         &lines(&[record, message(&["Later message"])]),
         0,
     );

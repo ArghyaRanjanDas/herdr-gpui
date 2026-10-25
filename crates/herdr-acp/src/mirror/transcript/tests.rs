@@ -29,7 +29,7 @@ fn codex_uses_canonical_messages_and_never_replays_permissions() {
         json!({"type":"event_msg","payload":{"type":"exec_approval_request","call_id":"c1","command":["do-not-run"]}}),
         json!({"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"\\[x^2\\]"}]}}),
     ]);
-    let transcript = parse(Agent::Codex, &bytes, 0);
+    let transcript = parse(TranscriptAgent::Codex, &bytes, 0);
     assert!(transcript.read_only);
     assert_eq!(transcript.entries.len(), 3);
     assert_eq!(transcript.session.unwrap().id, "thread1");
@@ -60,7 +60,7 @@ fn claude_combines_tool_results_and_ignores_duplicate_and_sidechain_records() {
         json!({"type":"assistant","uuid":"side","isSidechain":true,"message":{"content":[{"type":"text","text":"Other agent"}]}}),
         json!({"type":"user","uuid":"r1","message":{"content":[{"type":"tool_result","tool_use_id":"t1","is_error":true,"content":[{"type":"text","text":"No file"}]}]}}),
     ]);
-    let transcript = parse(Agent::Claude, &bytes, 0);
+    let transcript = parse(TranscriptAgent::Claude, &bytes, 0);
     assert_eq!(transcript.entries.len(), 3);
     assert!(
         transcript
@@ -81,10 +81,10 @@ fn partial_lines_wait_and_stable_entries_keep_their_ids() {
     let second = lines(&[json!({"type":"assistant","message":{"content":"two"}})]);
     let mut partial = first.clone();
     partial.extend_from_slice(&second[..second.len() - 1]);
-    let before = parse(Agent::Claude, &partial, 50);
+    let before = parse(TranscriptAgent::Claude, &partial, 50);
     assert_eq!(before.entries.len(), 1);
     partial.push(b'\n');
-    let after = parse(Agent::Claude, &partial, 50);
+    let after = parse(TranscriptAgent::Claude, &partial, 50);
     assert_eq!(after.entries.len(), 2);
     assert_eq!(before.entries[0], after.entries[0]);
     assert!(after.truncated);
@@ -93,7 +93,7 @@ fn partial_lines_wait_and_stable_entries_keep_their_ids() {
 #[test]
 fn file_changes_and_truncation_are_observed_without_writes_to_the_source() {
     let mut file = tempfile::NamedTempFile::new().unwrap();
-    let mut source = Source::new(file.path().to_owned(), Agent::Claude);
+    let mut source = Source::new(file.path().to_owned(), TranscriptAgent::Claude);
     let first = lines(&[json!({"type":"user","message":{"content":"one"}})]);
     file.write_all(&first).unwrap();
     assert_eq!(source.read().unwrap().unwrap().entries.len(), 1);
@@ -114,7 +114,7 @@ fn unicode_and_transcript_limits_keep_the_latest_complete_entries() {
             .map(|i| json!({"type":"user","message":{"content":format!("message {i}")}}))
             .collect::<Vec<_>>(),
     );
-    let transcript = parse(Agent::Claude, &bytes, 0);
+    let transcript = parse(TranscriptAgent::Claude, &bytes, 0);
     assert_eq!(transcript.entries.len(), MAX_ENTRIES);
     assert!(transcript.truncated);
     assert_eq!(transcript.entries[0].kind.text(), Some("message 10"));
@@ -137,7 +137,7 @@ fn oversized_and_malformed_records_do_not_hide_later_valid_messages() {
     bytes.extend(lines(&[
         json!({"type":"user","message":{"content":"visible"}}),
     ]));
-    let transcript = parse(Agent::Claude, &bytes, 0);
+    let transcript = parse(TranscriptAgent::Claude, &bytes, 0);
     assert_eq!(transcript.entries.len(), 1);
     assert_eq!(transcript.entries[0].kind.text(), Some("visible"));
     assert!(transcript.truncated);
@@ -151,7 +151,7 @@ fn a_large_files_tail_keeps_complete_records_and_absolute_entry_ids() {
     file.write_all(b"\n").unwrap();
     let first = lines(&[json!({"type":"user","message":{"content":"retained"}})]);
     file.write_all(&first).unwrap();
-    let mut source = Source::new(file.path().to_owned(), Agent::Claude);
+    let mut source = Source::new(file.path().to_owned(), TranscriptAgent::Claude);
     let before = source.read().unwrap().unwrap();
     assert_eq!(before.entries.len(), 1);
     assert!(before.truncated);
@@ -167,7 +167,7 @@ fn a_large_files_tail_keeps_complete_records_and_absolute_entry_ids() {
 #[test]
 fn directories_are_rejected_before_reading() {
     let directory = tempfile::tempdir().unwrap();
-    let mut source = Source::new(directory.path().to_owned(), Agent::Claude);
+    let mut source = Source::new(directory.path().to_owned(), TranscriptAgent::Claude);
     assert_eq!(
         source.read().unwrap_err().kind(),
         io::ErrorKind::InvalidInput

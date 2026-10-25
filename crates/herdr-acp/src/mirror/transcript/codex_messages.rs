@@ -4,7 +4,7 @@
 use herdr_chat_protocol::{Author, EntryId, EntryKind, Image, MAX_IMAGE_DATA};
 use serde_json::Value;
 
-use super::{BLOCKS, Projection, TEXT, limited, notices, string, text};
+use super::{BLOCKS, Projection, Role, TEXT, limited, notices, string, text};
 
 /// Larger records are useful only for inline image bytes, never arbitrary
 /// tool output or text. The caller still enforces the bounded tail size.
@@ -25,9 +25,12 @@ impl Projection {
     pub(super) fn codex_message(&mut self, base: EntryId, record: &Value) {
         let payload = &record["payload"];
         let role = if string(payload, "channel") == "analysis" {
-            "analysis"
+            Some(Role::Thought)
         } else {
-            string(payload, "role")
+            Role::of(string(payload, "role"))
+        };
+        let Some(role) = role else {
+            return;
         };
         let Some(blocks) = payload["content"].as_array() else {
             self.message(base, role, text(&payload["content"]));
@@ -43,7 +46,7 @@ impl Projection {
         let mut index = 0;
         while index < blocks.len().min(BLOCKS) {
             let id = EntryId(base.0 + index as u64);
-            if role == "user"
+            if role == Role::User
                 && let Some(attachment) = attachment(payload, blocks, index)
                 && index + attachment.consumed <= BLOCKS
             {
@@ -68,12 +71,12 @@ impl Projection {
             match string(block, "type") {
                 "text" | "input_text" | "output_text" | "summary_text" => {
                     let content = string(block, "text");
-                    if role == "user"
+                    if role == Role::User
                         && let Some(reply) = self.question_reply(record, content)
                     {
                         flush(self, &mut pending);
                         self.push(id, reply);
-                    } else if role == "user"
+                    } else if role == Role::User
                         && let Some(label) = context_label(record, index, blocks.len())
                     {
                         flush(self, &mut pending);
@@ -89,14 +92,11 @@ impl Projection {
                         pending.push_str(&limited(content, remaining));
                     }
                 }
-                "input_image" if matches!(role, "user" | "assistant") => {
-                    flush(self, &mut pending);
-                    let author = if role == "user" {
-                        Author::User
-                    } else {
-                        Author::Agent
-                    };
-                    self.push(id, picture(embedded_image(block), author));
+                "input_image" => {
+                    if let Some(author) = role.author() {
+                        flush(self, &mut pending);
+                        self.push(id, picture(embedded_image(block), author));
+                    }
                 }
                 _ => {}
             }

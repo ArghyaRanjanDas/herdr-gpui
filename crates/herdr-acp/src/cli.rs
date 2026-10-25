@@ -1,8 +1,11 @@
 //! Command-line parsing, pure and on OS strings so paths need not be UTF-8.
 
-use std::{ffi::OsString, path::PathBuf};
+use std::{
+    ffi::{OsStr, OsString},
+    path::PathBuf,
+};
 
-use crate::agents::Agent;
+use crate::{agents::Agent, mirror::transcript::TranscriptAgent};
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum Error {
@@ -22,8 +25,8 @@ pub enum Error {
     MissingEndpoint,
     #[error("`{0}` is not a chat endpoint id")]
     InvalidEndpoint(String),
-    #[error("mirror supports only codex and claude transcripts")]
-    MirrorAgent,
+    #[error("mirror and observe support only codex and claude transcripts")]
+    TranscriptAgent,
     #[error("observe needs a Codex/Claude session UUID, positive PID and process start ticks")]
     ObserveIdentity,
 }
@@ -36,7 +39,7 @@ pub(crate) enum Parsed {
     /// Watch an existing CLI transcript without starting or driving an agent.
     Mirror(MirrorOptions),
     /// Project one verified running CLI process over standard streams.
-    Observe(crate::observe::Options),
+    Observe(ObserveOptions),
     /// List the agents installed here, one name per line.
     Agents,
     Help,
@@ -74,10 +77,20 @@ pub(crate) enum AgentChoice {
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct MirrorOptions {
-    pub agent: Agent,
+    pub agent: TranscriptAgent,
     pub endpoint: Option<herdr_chat_protocol::EndpointId>,
     pub pane: Option<String>,
     pub path: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct ObserveOptions {
+    pub agent: TranscriptAgent,
+    pub pane: Option<String>,
+    pub pid: u32,
+    pub session: String,
+    /// The process's start time in clock ticks, which a reused PID lacks.
+    pub started: u64,
 }
 
 pub(crate) const HELP: &str = "\
@@ -215,24 +228,29 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Parsed, 
     Ok(Parsed::Run(options))
 }
 
+/// A subcommand's arguments, or `None` when any of them asks for help.
+fn unless_help(args: impl Iterator<Item = OsString>) -> Option<std::vec::IntoIter<OsString>> {
+    let args: Vec<OsString> = args.collect();
+    let help = args
+        .iter()
+        .any(|arg| matches!(arg.to_str(), Some("-h" | "--help")));
+    (!help).then(|| args.into_iter())
+}
+
+/// The agent whose native transcript `mirror` or `observe` reads.
+fn transcript_agent(name: Option<&OsStr>) -> Result<TranscriptAgent, Error> {
+    name.and_then(OsStr::to_str)
+        .and_then(|name| name.parse::<Agent>().ok())
+        .and_then(|agent| TranscriptAgent::try_from(agent).ok())
+        .ok_or(Error::TranscriptAgent)
+}
+
 fn mirror(args: impl Iterator<Item = OsString>) -> Result<Parsed, Error> {
-    let mut args = args.peekable();
-    if args
-        .peek()
-        .and_then(|arg| arg.to_str())
-        .is_some_and(|arg| matches!(arg, "-h" | "--help"))
-    {
+    let Some(mut args) = unless_help(args) else {
         return Ok(Parsed::Help);
-    }
-    let agent = match args.next().as_deref().and_then(|arg| arg.to_str()) {
-        Some("codex") => Agent::Codex,
-        Some("claude") => Agent::Claude,
-        _ => return Err(Error::MirrorAgent),
     };
+    let agent = transcript_agent(args.next().as_deref())?;
     let path = args.next().ok_or(Error::MissingValue("mirror FILE"))?;
-    if matches!(path.to_str(), Some("-h" | "--help")) {
-        return Ok(Parsed::Help);
-    }
     let mut options = MirrorOptions {
         agent,
         endpoint: None,
@@ -246,22 +264,17 @@ fn mirror(args: impl Iterator<Item = OsString>) -> Result<Parsed, Error> {
                 let id = utf8(args.next(), "--endpoint")?;
                 options.endpoint = Some(id.parse().map_err(|_| Error::InvalidEndpoint(id))?);
             }
-            Some("-h" | "--help") => return Ok(Parsed::Help),
             _ => return Err(Error::UnknownOption(arg)),
         }
     }
     Ok(Parsed::Mirror(options))
 }
 
-fn observe(mut args: impl Iterator<Item = OsString>) -> Result<Parsed, Error> {
-    let name = utf8(args.next(), "observe AGENT")?;
-    if matches!(name.as_str(), "-h" | "--help") {
+fn observe(args: impl Iterator<Item = OsString>) -> Result<Parsed, Error> {
+    let Some(mut args) = unless_help(args) else {
         return Ok(Parsed::Help);
-    }
-    let agent = name.parse::<Agent>().map_err(|_| Error::MirrorAgent)?;
-    if !matches!(agent, Agent::Codex | Agent::Claude) {
-        return Err(Error::MirrorAgent);
-    }
+    };
+    let agent = transcript_agent(args.next().as_deref())?;
     let session = utf8(args.next(), "observe SESSION_ID")?;
     uuid::Uuid::parse_str(&session).map_err(|_| Error::ObserveIdentity)?;
     let pid = utf8(args.next(), "observe PID")?
@@ -281,12 +294,12 @@ fn observe(mut args: impl Iterator<Item = OsString>) -> Result<Parsed, Error> {
             _ => return Err(Error::UnknownOption(arg)),
         }
     }
-    Ok(Parsed::Observe(crate::observe::Options {
+    Ok(Parsed::Observe(ObserveOptions {
         agent,
-        session,
-        pid,
-        started,
         pane,
+        pid,
+        session,
+        started,
     }))
 }
 

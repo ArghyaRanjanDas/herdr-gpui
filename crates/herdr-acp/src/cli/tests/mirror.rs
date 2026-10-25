@@ -14,7 +14,7 @@ fn mirror_requires_an_explicit_native_transcript_and_parses_its_route() {
             id
         ])),
         Ok(Parsed::Mirror(MirrorOptions {
-            agent: Agent::Codex,
+            agent: TranscriptAgent::Codex,
             path: "/tmp/session.jsonl".into(),
             pane: Some("p1".into()),
             endpoint: Some(id.parse().unwrap()),
@@ -26,7 +26,7 @@ fn mirror_requires_an_explicit_native_transcript_and_parses_its_route() {
     ));
     assert_eq!(
         parse(args(&["mirror", "gemini", "/tmp/session.jsonl"])),
-        Err(Error::MirrorAgent)
+        Err(Error::TranscriptAgent)
     );
     assert_eq!(
         parse(args(&["mirror", "codex"])),

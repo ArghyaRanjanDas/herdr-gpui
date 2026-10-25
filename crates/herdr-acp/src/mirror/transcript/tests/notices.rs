@@ -13,7 +13,7 @@ fn task(content: &str) -> Value {
 
 #[test]
 fn task_notifications_are_inert_notices_with_the_complete_source() {
-    let transcript = parse(Agent::Claude, &lines(&[task(TASK)]), 0);
+    let transcript = parse(TranscriptAgent::Claude, &lines(&[task(TASK)]), 0);
     assert_eq!(
         transcript.entries[0].kind,
         EntryKind::Notice {
@@ -28,7 +28,7 @@ fn task_notifications_are_inert_notices_with_the_complete_source() {
     assert!(transcript.queued.is_empty());
 
     let output = "<task-notification><task-id>task-2</task-id><tool-use-id>tool-2</tool-use-id><output-file>/never-opened/result</output-file><status>completed</status><summary>Saved result</summary></task-notification>";
-    let transcript = parse(Agent::Claude, &lines(&[task(output)]), 0);
+    let transcript = parse(TranscriptAgent::Claude, &lines(&[task(output)]), 0);
     assert!(matches!(
         &transcript.entries[0].kind,
         EntryKind::Notice { details: Some(details), text, .. }
@@ -45,7 +45,7 @@ fn scheduled_and_unknown_system_origins_remain_distinct_from_user_prompts() {
         json!({"type":"user", "promptSource":"system", "turnOrigin":"future_origin", "message":{"content":"Unknown internal event\nDetails"}}),
         json!({"type":"user", "isMeta":true, "message":{"content":"Internal context"}}),
     ];
-    let transcript = parse(Agent::Claude, &lines(&records), 0);
+    let transcript = parse(TranscriptAgent::Claude, &lines(&records), 0);
     let summaries = [
         "Scheduled reminder · Production monitor review",
         "System activity · Unknown internal event",
@@ -72,7 +72,7 @@ fn quoting_notification_xml_or_reminders_does_not_change_the_author() {
         json!({"type":"assistant", "promptSource":"system",
             "origin":{"kind":"task-notification"}, "message":{"content":TASK}}),
     ];
-    let transcript = parse(Agent::Claude, &lines(&records), 0);
+    let transcript = parse(TranscriptAgent::Claude, &lines(&records), 0);
     for entry in &transcript.entries[..3] {
         assert!(matches!(entry.kind, EntryKind::User { .. }));
     }
@@ -86,7 +86,7 @@ fn quoting_notification_xml_or_reminders_does_not_change_the_author() {
 #[test]
 fn incomplete_notification_markup_keeps_the_source_and_a_generic_summary() {
     let malformed = "<task-notification><summary>Still writing";
-    let transcript = parse(Agent::Claude, &lines(&[task(malformed)]), 0);
+    let transcript = parse(TranscriptAgent::Claude, &lines(&[task(malformed)]), 0);
     assert!(matches!(
         &transcript.entries[0].kind,
         EntryKind::Notice { text, details: Some(details), .. }
@@ -102,13 +102,20 @@ fn notices_keep_stable_ids_and_ignore_duplicate_sidechain_and_partial_records() 
     sidechain["isSidechain"] = json!(true);
     let mut next = first.clone();
     next["uuid"] = json!("next-record");
-    let before = parse(Agent::Claude, &lines(std::slice::from_ref(&first)), 0);
+    let before = parse(
+        TranscriptAgent::Claude,
+        &lines(std::slice::from_ref(&first)),
+        0,
+    );
     let mut bytes = lines(&[first.clone(), first, sidechain]);
     let last = lines(&[next]);
     bytes.extend_from_slice(&last[..last.len() - 1]);
-    assert_eq!(parse(Agent::Claude, &bytes, 0).entries, before.entries);
+    assert_eq!(
+        parse(TranscriptAgent::Claude, &bytes, 0).entries,
+        before.entries
+    );
     bytes.push(b'\n');
-    let after = parse(Agent::Claude, &bytes, 0);
+    let after = parse(TranscriptAgent::Claude, &bytes, 0);
     assert_eq!(after.entries[0], before.entries[0]);
     assert!(after.entries[0].id < after.entries[1].id);
 }
@@ -116,7 +123,7 @@ fn notices_keep_stable_ids_and_ignore_duplicate_sidechain_and_partial_records() 
 #[test]
 fn notice_details_obey_field_and_transcript_limits_with_an_explicit_cut_marker() {
     let raw = "α".repeat(TEXT);
-    let transcript = parse(Agent::Claude, &lines(&[task(&raw)]), 0);
+    let transcript = parse(TranscriptAgent::Claude, &lines(&[task(&raw)]), 0);
     let EntryKind::Notice {
         details: Some(details),
         ..
@@ -135,7 +142,7 @@ fn notice_details_obey_field_and_transcript_limits_with_an_explicit_cut_marker()
             record
         })
         .collect::<Vec<_>>();
-    let transcript = parse(Agent::Claude, &lines(&records), 0);
+    let transcript = parse(TranscriptAgent::Claude, &lines(&records), 0);
     assert!(transcript.entries.len() < records.len());
     assert!(
         transcript

@@ -12,7 +12,7 @@ fn a_mirrored_transcript_keeps_no_more_than_a_live_chat() {
             ]}})
         })
         .collect::<Vec<_>>();
-    let transcript = parse(Agent::Claude, &lines(&records), 0);
+    let transcript = parse(TranscriptAgent::Claude, &lines(&records), 0);
     assert!(transcript.truncated);
     assert!(transcript.entries.len() < records.len());
     assert_eq!(keep_from(&transcript.entries), 0);

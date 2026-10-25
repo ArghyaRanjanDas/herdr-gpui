@@ -4,7 +4,7 @@ use herdr_chat_protocol::{OptionValue, Status};
 #[test]
 fn codex_reports_latest_model_and_context_without_claiming_liveness() {
     let transcript = parse(
-        Agent::Codex,
+        TranscriptAgent::Codex,
         &lines(&[
             json!({"type":"turn_context","payload":{"model":"first-model","effort":"high"}}),
             json!({"type":"event_msg","payload":{"type":"token_count","info":{
@@ -54,7 +54,7 @@ fn invalid_context_counts_do_not_invent_usage() {
         (json!(200), json!("5")),
     ] {
         let transcript = parse(
-            Agent::Codex,
+            TranscriptAgent::Codex,
             &lines(&[
                 json!({"type":"event_msg","payload":{"type":"token_count","info":{
                     "model_context_window":size,"last_token_usage":{"total_tokens":used}
@@ -70,7 +70,7 @@ fn invalid_context_counts_do_not_invent_usage() {
 fn claude_reports_only_the_primary_assistants_bounded_model() {
     let model = "α".repeat(200);
     let transcript = parse(
-        Agent::Claude,
+        TranscriptAgent::Claude,
         &lines(&[
             json!({"type":"assistant","message":{"model":model,"content":"answer","usage":{"input_tokens":1000}}}),
             json!({"type":"assistant","isSidechain":true,"message":{"model":"side-model","content":"other"}}),

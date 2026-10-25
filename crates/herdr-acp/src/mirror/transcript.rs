@@ -10,7 +10,7 @@ use std::{
 };
 
 use herdr_chat_protocol::{
-    ConfigOption, Entry, EntryId, EntryKind, OptionCategory, OptionKind, SessionInfo, Tool,
+    Author, ConfigOption, Entry, EntryId, EntryKind, OptionCategory, OptionKind, SessionInfo, Tool,
     ToolContent, ToolKind, ToolStatus, Transcript, Usage,
 };
 use serde_json::Value;
@@ -29,15 +29,72 @@ const RECORD: usize = 1024 * 1024;
 const TEXT: usize = 128 * 1024;
 const BLOCKS: usize = 1024;
 
+/// The agents whose native logs can be projected.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum TranscriptAgent {
+    Claude,
+    Codex,
+}
+
+impl From<TranscriptAgent> for Agent {
+    fn from(agent: TranscriptAgent) -> Self {
+        match agent {
+            TranscriptAgent::Claude => Self::Claude,
+            TranscriptAgent::Codex => Self::Codex,
+        }
+    }
+}
+
+impl TryFrom<Agent> for TranscriptAgent {
+    /// The agent itself, which keeps no log this module reads.
+    type Error = Agent;
+
+    fn try_from(agent: Agent) -> Result<Self, Self::Error> {
+        match agent {
+            Agent::Claude => Ok(Self::Claude),
+            Agent::Codex => Ok(Self::Codex),
+            Agent::Copilot | Agent::Gemini | Agent::Opencode | Agent::Pi => Err(agent),
+        }
+    }
+}
+
+/// Who wrote a message record, read once from its native role or channel.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Role {
+    User,
+    Agent,
+    Thought,
+}
+
+impl Role {
+    /// The author of a native `user` or `assistant` record; other roles,
+    /// such as system or developer messages, are not shown.
+    fn of(role: &str) -> Option<Self> {
+        match role {
+            "user" => Some(Self::User),
+            "assistant" => Some(Self::Agent),
+            _ => None,
+        }
+    }
+
+    fn author(self) -> Option<Author> {
+        match self {
+            Self::User => Some(Author::User),
+            Self::Agent => Some(Author::Agent),
+            Self::Thought => None,
+        }
+    }
+}
+
 pub(crate) struct Source {
-    agent: Agent,
+    agent: TranscriptAgent,
     path: PathBuf,
     pinned: Option<File>,
     stamp: Option<(u64, Option<SystemTime>)>,
 }
 
 impl Source {
-    pub(crate) fn new(path: PathBuf, agent: Agent) -> Self {
+    pub(crate) fn new(path: PathBuf, agent: TranscriptAgent) -> Self {
         Self {
             agent,
             path,
@@ -48,7 +105,7 @@ impl Source {
 
     /// An observer pins the file it verified, so replacing a pathname cannot
     /// swap another conversation into an already attached view.
-    pub(crate) fn pinned(path: PathBuf, agent: Agent, file: File) -> Self {
+    pub(crate) fn pinned(path: PathBuf, agent: TranscriptAgent, file: File) -> Self {
         Self {
             agent,
             path,
@@ -160,15 +217,14 @@ impl Projection {
         self.transcript.entries.push(Entry { id, kind });
     }
 
-    fn message(&mut self, id: EntryId, role: &str, text: String) {
+    fn message(&mut self, id: EntryId, role: Role, text: String) {
         if text.is_empty() {
             return;
         }
         let kind = match role {
-            "user" => EntryKind::User { text },
-            "assistant" => EntryKind::Agent { text },
-            "analysis" => EntryKind::Thought { text },
-            _ => return,
+            Role::User => EntryKind::User { text },
+            Role::Agent => EntryKind::Agent { text },
+            Role::Thought => EntryKind::Thought { text },
         };
         self.push(id, kind);
     }
@@ -274,7 +330,7 @@ impl Projection {
             }
             "response_item" => match string(payload, "type") {
                 "message" => self.codex_message(id, record),
-                "reasoning" => self.message(id, "analysis", text(&payload["summary"])),
+                "reasoning" => self.message(id, Role::Thought, text(&payload["summary"])),
                 "function_call" => self.tool(
                     id,
                     string(payload, "call_id"),
@@ -337,12 +393,14 @@ impl Projection {
     }
 
     fn claude(&mut self, base: EntryId, record: &Value) {
-        let role = string(record, "type");
-        if !matches!(role, "user" | "assistant") || record["isSidechain"] == true {
+        let Some(role) = Role::of(string(record, "type")) else {
+            return;
+        };
+        if record["isSidechain"] == true {
             return;
         }
         self.session(string(record, "sessionId"), string(record, "cwd"));
-        if role == "assistant" {
+        if role == Role::Agent {
             self.reported_option(
                 OptionCategory::Model,
                 "model",
@@ -351,7 +409,7 @@ impl Projection {
         }
         let content = &record["message"]["content"];
         if let Some(content) = content.as_str() {
-            self.claude_message(base, record, content);
+            self.claude_message(base, role, record, content);
             return;
         }
         let Some(blocks) = content.as_array() else {
@@ -363,17 +421,17 @@ impl Projection {
         for (index, block) in blocks.iter().take(BLOCKS).enumerate() {
             let id = EntryId(base.0 + index as u64);
             match string(block, "type") {
-                "text" => self.claude_message(id, record, string(block, "text")),
-                "thinking" if role == "assistant" => {
-                    self.message(id, "analysis", limited(string(block, "thinking"), TEXT))
+                "text" => self.claude_message(id, role, record, string(block, "text")),
+                "thinking" if role == Role::Agent => {
+                    self.message(id, Role::Thought, limited(string(block, "thinking"), TEXT))
                 }
-                "tool_use" if role == "assistant" => self.tool(
+                "tool_use" if role == Role::Agent => self.tool(
                     id,
                     string(block, "id"),
                     string(block, "name"),
                     &block["input"],
                 ),
-                "tool_result" if role == "user" => self.output(
+                "tool_result" if role == Role::User => self.output(
                     string(block, "tool_use_id"),
                     &block["content"],
                     block["is_error"] == true,
@@ -383,21 +441,23 @@ impl Projection {
         }
     }
 
-    fn claude_message(&mut self, id: EntryId, record: &Value, content: &str) {
-        if let Some(notice) = notices::project(record, content) {
+    fn claude_message(&mut self, id: EntryId, role: Role, record: &Value, content: &str) {
+        if role == Role::User
+            && let Some(notice) = notices::project(record, content)
+        {
             self.transcript.truncated |= content.len() > TEXT;
             self.push(id, notice);
         } else {
-            self.message(id, string(record, "type"), limited(content, TEXT));
+            self.message(id, role, limited(content, TEXT));
         }
     }
 }
 
-fn parse(agent: Agent, bytes: &[u8], mut offset: u64) -> Transcript {
+fn parse(agent: TranscriptAgent, bytes: &[u8], mut offset: u64) -> Transcript {
     let mut projection = Projection {
         answered: HashMap::new(),
         transcript: Transcript {
-            agent: agent.display_name().to_owned(),
+            agent: Agent::from(agent).display_name().to_owned(),
             read_only: true,
             truncated: offset > 0,
             ..Transcript::default()
@@ -412,10 +472,9 @@ fn parse(agent: Agent, bytes: &[u8], mut offset: u64) -> Transcript {
         if line.last() != Some(&b'\n') {
             break;
         }
-        let record_limit = if matches!(agent, Agent::Codex) {
-            TAIL as usize
-        } else {
-            RECORD
+        let record_limit = match agent {
+            TranscriptAgent::Codex => TAIL as usize,
+            TranscriptAgent::Claude => RECORD,
         };
         if line.len() > record_limit {
             projection.transcript.truncated = true;
@@ -436,14 +495,13 @@ fn parse(agent: Agent, bytes: &[u8], mut offset: u64) -> Transcript {
             break;
         };
         match agent {
-            Agent::Codex => projection.codex(EntryId(base), &record),
-            Agent::Claude => {
+            TranscriptAgent::Codex => projection.codex(EntryId(base), &record),
+            TranscriptAgent::Claude => {
                 let uuid = string(&record, "uuid");
                 if uuid.is_empty() || seen.insert(limited(uuid, 512)) {
                     projection.claude(EntryId(base), &record);
                 }
             }
-            _ => {}
         }
     }
     let transcript = &mut projection.transcript;
