@@ -3,7 +3,7 @@
 use super::{Caret, Cell, Key, Position, Region};
 use crate::{
     chat::{
-        prepared::{Body, Part, tool_label, tool_text},
+        prepared::{Body, MESSAGE, Part, folded_thought, notice_label, tool_header, tool_text},
         rich::{Block, CodeText, Inline, MAX_CODE_LINES},
     },
     release_notes::{Kind, Line},
@@ -262,11 +262,7 @@ fn project(
         Some(Body::Message(parts)) => builder.parts(parts),
         Some(Body::Answers { parts, .. }) => {
             if let EntryKind::Notice { text, .. } = &entry.kind {
-                builder.plain(
-                    Region::Label,
-                    Cell::default(),
-                    crate::notifications::safe_text(text, 240),
-                );
+                builder.plain(Region::Label, Cell::default(), notice_label(text));
             }
             builder.parts(parts);
         }
@@ -281,11 +277,7 @@ fn project(
         }
         Some(Body::Tool(_)) => {
             if let EntryKind::Tool(tool) = &entry.kind {
-                builder.plain(
-                    Region::Label,
-                    Cell::default(),
-                    crate::notifications::safe_text(tool_label(&tool.title), 300),
-                );
+                builder.plain(Region::Label, Cell::default(), tool_header(&tool.title));
                 if expanded {
                     builder.plain(Region::ToolTitle, Cell::default(), tool.title.clone());
                     for (row, location) in tool.locations.iter().enumerate() {
@@ -302,30 +294,18 @@ fn project(
         Some(Body::Image(_)) => {}
         None => match &entry.kind {
             EntryKind::Thought { text } if !expanded => {
-                let first = text
-                    .lines()
-                    .find(|line| !line.trim().is_empty())
-                    .unwrap_or("");
-                builder.plain(
-                    Region::Body(0),
-                    Cell::default(),
-                    crate::notifications::safe_text(first, 120),
-                );
+                builder.plain(Region::Body(0), Cell::default(), folded_thought(text));
             }
             EntryKind::Notice {
                 text,
                 details: Some(_),
                 ..
-            } => builder.plain(
-                Region::Body(0),
-                Cell::default(),
-                crate::notifications::safe_text(text, 240),
-            ),
+            } => builder.plain(Region::Body(0), Cell::default(), notice_label(text)),
             EntryKind::User { text }
             | EntryKind::Agent { text }
             | EntryKind::Thought { text }
             | EntryKind::Notice { text, .. } => {
-                let end = text.floor_char_boundary(text.len().min(256 * 1024));
+                let end = text.floor_char_boundary(text.len().min(MESSAGE.body));
                 builder.plain(Region::Body(0), Cell::default(), text[..end].to_owned());
             }
             EntryKind::Turn(turn) => {
@@ -340,7 +320,7 @@ fn project(
             ..
         } = &entry.kind
     {
-        let end = details.floor_char_boundary(details.len().min(256 * 1024));
+        let end = details.floor_char_boundary(details.len().min(MESSAGE.body));
         builder.plain(Region::Details, Cell::default(), details[..end].to_owned());
     }
     let positions = builder

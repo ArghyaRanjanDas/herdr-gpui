@@ -3,10 +3,10 @@ use herdr_chat_protocol::ToolContent;
 
 #[core::prelude::v1::test]
 fn question_tool_labels_do_not_change_unknown_tools() {
-    assert_eq!(tool_label("request_user_input"), "Ask user");
-    assert_eq!(tool_label("request_user_input_async"), "Ask user");
+    assert_eq!(tool_header("request_user_input"), "Ask user");
+    assert_eq!(tool_header("request_user_input_async"), "Ask user");
     assert_eq!(
-        tool_label("some_request_user_input"),
+        tool_header("some_request_user_input"),
         "some_request_user_input"
     );
 }

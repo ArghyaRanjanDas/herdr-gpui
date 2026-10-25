@@ -22,7 +22,7 @@ const TOOL_LINES: usize = 6;
 const DIFF_BYTES: usize = 512 * 1024;
 /// How much of one answer is drawn: as much text as the program keeps for
 /// an entry, with room for long code. A longer answer ends with a note.
-const MESSAGE: release_notes::Limits = release_notes::Limits {
+pub(super) const MESSAGE: release_notes::Limits = release_notes::Limits {
     body: 256 * 1024,
     lines: 2_000,
     line: 4_000,
@@ -53,17 +53,45 @@ pub(crate) struct DiffSummary {
     pub(crate) removed: usize,
 }
 
-/// What a tool call's header reads. The view and the selection document
-/// both call this, so the drawn text always matches its selectable segment.
-pub(crate) fn tool_label(title: &str) -> &str {
+/// Characters of a tool call's header.
+const TOOL_HEADER: usize = 300;
+/// Characters of a notice's folded line or the label above its answers.
+const NOTICE_LABEL: usize = 240;
+/// Characters of a folded thought's first line.
+const FOLDED_THOUGHT: usize = 120;
+
+/// What a tool call's title reads as, before it is cut to a header.
+fn tool_label(title: &str) -> &str {
     match title {
         "request_user_input" | "request_user_input_async" => "Ask user",
         _ => title,
     }
 }
 
+// The view and the selection document both draw these labels from the
+// helpers below, so the drawn text always matches its selectable segment.
+
+/// A tool call's header.
+pub(super) fn tool_header(title: &str) -> String {
+    crate::notifications::safe_text(tool_label(title), TOOL_HEADER)
+}
+
+/// A notice's folded line, or the label above its answers.
+pub(super) fn notice_label(text: &str) -> String {
+    crate::notifications::safe_text(text, NOTICE_LABEL)
+}
+
+/// The first line of a folded thought with any text on it.
+pub(super) fn folded_thought(text: &str) -> String {
+    let first = text
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or("");
+    crate::notifications::safe_text(first, FOLDED_THOUGHT)
+}
+
 /// Expanded tool output comes from the retained transcript, not its preview.
-/// Shared by the view and the selection document, like [`tool_label`].
+/// Shared by the view and the selection document, like [`tool_header`].
 pub(crate) fn tool_text(content: &ToolContent) -> Option<String> {
     match content {
         ToolContent::Text { text } => Some(text.clone()),

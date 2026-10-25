@@ -5,7 +5,7 @@
 use super::{
     super::{
         chats::ChatPane,
-        prepared::{Body, Part, ToolSummary, tool_label, tool_text},
+        prepared::{Body, Part, ToolSummary, folded_thought, notice_label, tool_header, tool_text},
         rich::{Block, Inline},
         selection::{Cell, Region},
         visual::Visuals,
@@ -22,8 +22,6 @@ mod questions;
 
 /// Locations listed under a folded tool call.
 const LOCATIONS: usize = 3;
-/// Characters of a folded thought shown.
-const FOLDED: usize = 120;
 fn tool_kind(kind: ToolKind) -> &'static str {
     match kind {
         ToolKind::Read => "Read",
@@ -235,11 +233,7 @@ impl HerdrWindow {
         let shown = if expanded {
             text.to_owned()
         } else {
-            let line = text
-                .lines()
-                .find(|line| !line.trim().is_empty())
-                .unwrap_or("");
-            safe_text(line, FOLDED)
+            folded_thought(text)
         };
         let pane_id = pane_id.to_owned();
         let text_pane = pane_id.clone();
@@ -371,7 +365,7 @@ impl HerdrWindow {
                             .child(self.render_chat_plain_text(
                                 self.chat_text_scope(pane_id, entry, Region::Label),
                                 Cell::default(),
-                                safe_text(tool_label(&tool.title), 300),
+                                tool_header(&tool.title),
                                 cx,
                             )),
                     )
@@ -646,7 +640,7 @@ impl HerdrWindow {
                             .child(self.render_chat_plain_text(
                                 self.chat_text_scope(&pane_id, id, Region::Body(0)),
                                 Cell::default(),
-                                safe_text(text, 240),
+                                notice_label(text),
                                 cx,
                             )),
                     )

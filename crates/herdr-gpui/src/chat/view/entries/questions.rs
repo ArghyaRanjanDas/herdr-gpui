@@ -41,7 +41,7 @@ impl HerdrWindow {
                     .child(self.render_chat_plain_text(
                         self.chat_text_scope(pane_id, entry.id, Region::Label),
                         Cell::default(),
-                        safe_text(label, 240),
+                        notice_label(label),
                         cx,
                     )),
             )
