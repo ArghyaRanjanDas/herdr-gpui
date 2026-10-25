@@ -15,6 +15,26 @@ pub(crate) const MAX_INPUT: usize = 2048;
 const MAX_COMPONENTS: usize = 32;
 const MAX_FIELDS: usize = 16;
 const MAX_PROMPT: usize = 16 * 1024;
+/// Bytes of a title, label, option, column, or chart point name.
+const MAX_LABEL: usize = 160;
+/// Bytes of a card's or a text component's body.
+const MAX_BODY: usize = 8192;
+/// Bytes of the prompt an action starts.
+const MAX_ACTION_PROMPT: usize = 4096;
+/// Bytes of a metric's value.
+const MAX_METRIC: usize = 128;
+/// Bytes of a metric's detail or a table cell.
+const MAX_DETAIL: usize = 512;
+/// Bytes of a field id.
+const MAX_FIELD_ID: usize = 64;
+const MAX_CHOICES: usize = 12;
+const MAX_COLUMNS: usize = 8;
+const MAX_ROWS: usize = 32;
+const MAX_POINTS: usize = 32;
+/// Largest magnitude of a slider bound, step, value, or chart point.
+const MAX_NUMBER: f64 = 1e9;
+/// Most steps a slider may have between its bounds.
+const MAX_STEPS: f64 = 10_000.;
 
 #[derive(Debug)]
 pub(crate) struct Document {
@@ -144,29 +164,29 @@ impl Component {
     fn valid(&self) -> bool {
         match self {
             Self::Action { label, prompt, .. } => {
-                text(label, 160)
+                text(label, MAX_LABEL)
                     && !label.is_empty()
-                    && text(prompt, 4096)
+                    && text(prompt, MAX_ACTION_PROMPT)
                     && !prompt.trim().is_empty()
             }
-            Self::Card { title, text: body } => text(title, 160) && text(body, 8192),
-            Self::Text { text: body } => text(body, 8192),
+            Self::Card { title, text: body } => text(title, MAX_LABEL) && text(body, MAX_BODY),
+            Self::Text { text: body } => text(body, MAX_BODY),
             Self::Metric {
                 label,
                 value,
                 detail,
-            } => text(label, 160) && text(value, 128) && text(detail, 512),
+            } => text(label, MAX_LABEL) && text(value, MAX_METRIC) && text(detail, MAX_DETAIL),
             Self::Choice {
                 label,
                 options,
                 value,
                 ..
             } => {
-                text(label, 160)
-                    && (1..=12).contains(&options.len())
+                text(label, MAX_LABEL)
+                    && (1..=MAX_CHOICES).contains(&options.len())
                     && options
                         .iter()
-                        .all(|option| !option.is_empty() && text(option, 160))
+                        .all(|option| !option.is_empty() && text(option, MAX_LABEL))
                     && options
                         .iter()
                         .collect::<std::collections::HashSet<_>>()
@@ -174,15 +194,15 @@ impl Component {
                         == options.len()
                     && options.contains(value)
             }
-            Self::Toggle { label, .. } => text(label, 160),
+            Self::Toggle { label, .. } => text(label, MAX_LABEL),
             Self::Input {
                 label,
                 placeholder,
                 value,
                 ..
             } => {
-                text(label, 160)
-                    && text(placeholder, 160)
+                text(label, MAX_LABEL)
+                    && text(placeholder, MAX_LABEL)
                     && text(value, MAX_INPUT)
                     && !value.contains('\n')
             }
@@ -194,31 +214,31 @@ impl Component {
                 value,
                 ..
             } => {
-                text(label, 160)
+                text(label, MAX_LABEL)
                     && [min, max, step, value]
                         .iter()
-                        .all(|n| n.is_finite() && n.abs() <= 1e9)
+                        .all(|n| n.is_finite() && n.abs() <= MAX_NUMBER)
                     && max > min
                     && *step > 0.
                     && *step <= max - min
-                    && (max - min) / step <= 10000.
+                    && (max - min) / step <= MAX_STEPS
                     && (min..=max).contains(&value)
             }
             Self::Table { columns, rows } => {
-                (1..=8).contains(&columns.len())
-                    && rows.len() <= 32
-                    && columns.iter().all(|cell| text(cell, 160))
+                (1..=MAX_COLUMNS).contains(&columns.len())
+                    && rows.len() <= MAX_ROWS
+                    && columns.iter().all(|cell| text(cell, MAX_LABEL))
                     && rows.iter().all(|row| {
-                        row.len() == columns.len() && row.iter().all(|cell| text(cell, 512))
+                        row.len() == columns.len() && row.iter().all(|cell| text(cell, MAX_DETAIL))
                     })
             }
             Self::Chart { label, points } => {
-                text(label, 160)
-                    && (1..=32).contains(&points.len())
+                text(label, MAX_LABEL)
+                    && (1..=MAX_POINTS).contains(&points.len())
                     && points.iter().all(|point| {
-                        text(&point.label, 160)
+                        text(&point.label, MAX_LABEL)
                             && point.value.is_finite()
-                            && (0. ..=1e9).contains(&point.value)
+                            && (0. ..=MAX_NUMBER).contains(&point.value)
                     })
             }
         }
@@ -245,8 +265,11 @@ impl Document {
             return Err(Error::TooLarge);
         }
         let mut spec: Spec = serde_json::from_str(source)?;
-        if !text(&spec.title, 160) || !(1..=MAX_COMPONENTS).contains(&spec.components.len()) {
-            return Err(Error::Invalid("title or component count"));
+        if !text(&spec.title, MAX_LABEL) {
+            return Err(Error::Title);
+        }
+        if !(1..=MAX_COMPONENTS).contains(&spec.components.len()) {
+            return Err(Error::ComponentCount);
         }
         let mut fields = std::collections::HashSet::new();
         for component in &mut spec.components {
@@ -257,21 +280,21 @@ impl Document {
                 *value = first.clone();
             }
             if !component.valid() {
-                return Err(Error::Invalid("component fields or bounds"));
+                return Err(Error::Component);
             }
             if let Some((id, _)) = component.field()
                 && (id.is_empty()
-                    || id.len() > 64
+                    || id.len() > MAX_FIELD_ID
                     || !id
                         .bytes()
                         .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-'))
                     || !fields.insert(id.to_owned()))
             {
-                return Err(Error::Invalid("field ids must be unique ASCII names"));
+                return Err(Error::FieldId);
             }
         }
         if fields.len() > MAX_FIELDS {
-            return Err(Error::Invalid("too many editable fields"));
+            return Err(Error::TooManyFields);
         }
         Ok(Self {
             title: spec.title,
@@ -304,13 +327,13 @@ impl Document {
         let mut checked = self.defaults();
         for (id, value) in values {
             if !self.set(&mut checked, id, value.clone()) {
-                return Err(Error::Invalid("form value"));
+                return Err(Error::FormValue);
             }
         }
         if !self.components.iter().any(
             |component| matches!(component, Component::Action { prompt, .. } if prompt == prefix),
         ) {
-            return Err(Error::Invalid("action is no longer present"));
+            return Err(Error::ActionGone);
         }
         let prompt = if checked.is_empty() {
             prefix.to_owned()

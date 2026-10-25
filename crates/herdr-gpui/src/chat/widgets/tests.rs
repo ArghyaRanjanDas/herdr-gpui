@@ -33,7 +33,7 @@ fn actions_include_validated_current_values_as_literal_json() {
     assert_eq!(parsed["count"], 2.);
     assert!(matches!(
         document.prompt("run something else", &values),
-        Err(Error::Invalid(_))
+        Err(Error::ActionGone)
     ));
 }
 
@@ -59,18 +59,33 @@ fn malformed_streaming_and_oversized_sources_never_become_cards() {
         Document::parse(&" ".repeat(MAX_SOURCE + 1)),
         Err(Error::TooLarge)
     ));
+    assert!(matches!(
+        Document::parse(r#"{"components":[]}"#),
+        Err(Error::ComponentCount)
+    ));
+    assert!(matches!(
+        Document::parse(&format!(
+            r#"{{"title":"{}","components":[{{"type":"text","text":"ok"}}]}}"#,
+            "x".repeat(MAX_LABEL + 1)
+        )),
+        Err(Error::Title)
+    ));
+    assert!(matches!(
+        Document::parse(
+            r#"{"components":[{"type":"toggle","id":"x","label":"A"},{"type":"input","id":"x","label":"B"}]}"#
+        ),
+        Err(Error::FieldId)
+    ));
     for source in [
-        r#"{"components":[]}"#,
         r#"{"components":[{"type":"text","text":"bad\u001b[2J"}]}"#,
         r#"{"components":[{"type":"slider","id":"x","label":"X","min":2,"max":1,"value":1}]}"#,
         r#"{"components":[{"type":"slider","id":"x","label":"X","min":0,"max":1,"step":0,"value":0}]}"#,
         r#"{"components":[{"type":"choice","id":"x","label":"X","options":["a"],"value":"b"}]}"#,
         r#"{"components":[{"type":"table","columns":["A","B"],"rows":[["one"]]}]}"#,
         r#"{"components":[{"type":"chart","label":"X","points":[{"label":"A","value":-1}]}]}"#,
-        r#"{"components":[{"type":"toggle","id":"x","label":"A"},{"type":"input","id":"x","label":"B"}]}"#,
     ] {
         assert!(
-            matches!(Document::parse(source), Err(Error::Invalid(_))),
+            matches!(Document::parse(source), Err(Error::Component)),
             "{source}"
         );
     }
@@ -82,7 +97,7 @@ fn directional_controls_are_rejected_after_json_decoding() {
         let source = format!(
             r#"{{"components":[{{"type":"action","label":"Review {escaped}hidden","prompt":"Continue"}}]}}"#
         );
-        assert!(matches!(Document::parse(&source), Err(Error::Invalid(_))));
+        assert!(matches!(Document::parse(&source), Err(Error::Component)));
     }
     assert!(
         Document::parse(r#"{"components":[{"type":"text","text":"first\n\tsecond"}]}"#).is_ok()
@@ -119,7 +134,7 @@ fn field_values_cannot_escape_the_catalog_or_its_bounds() {
     values.insert("command".into(), Value::Text("unexpected".into()));
     assert!(matches!(
         document.prompt("Use these settings", &values),
-        Err(Error::Invalid(_))
+        Err(Error::FormValue)
     ));
 }
 
