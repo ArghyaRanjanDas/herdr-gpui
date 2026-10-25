@@ -4,8 +4,10 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import Mock, patch
 
 from rich_chat_native_input import last_record
+from rich_chat_resize import capture_resize
 
 
 class NativeRecordTests(unittest.TestCase):
@@ -34,3 +36,53 @@ class NativeRecordTests(unittest.TestCase):
         self.log.write_text(self.prefix + "{broken}\n")
         with self.assertRaises(json.JSONDecodeError):
             last_record(self.log, self.prefix)
+
+    def test_delayed_drag_events_cannot_supply_the_next_grip_position(self):
+        initial = dict(mode="Auto", input_rows=8, conversation_rows=30,
+                       divider=[24, 700], pointer=[0, 0],
+                       viewport=dict(x=0, y=0, width=100, height=900))
+        state = initial.copy()
+        queued = []
+        starts = []
+
+        def record():
+            nonlocal state
+            if queued:
+                state = queued.pop(0)
+            return state
+
+        def drag(start, end):
+            starts.append(start)
+            if len(starts) == 1:
+                self.assertEqual(start, initial["divider"])
+                partial = dict(mode="Rows(9)", input_rows=9, conversation_rows=29,
+                               divider=[24, 680], pointer=[24, 680])
+                final = dict(mode="Rows(14)", input_rows=14, conversation_rows=24,
+                             divider=[24, 580], pointer=end)
+            else:
+                # Using the first intermediate height would miss this grip.
+                self.assertEqual(start, [24, 580])
+                partial = dict(mode="Rows(13)", input_rows=13, conversation_rows=25,
+                               divider=[24, 600], pointer=[24, 610])
+                final = dict(mode="Rows(11)", input_rows=11, conversation_rows=27,
+                             divider=[24, 640], pointer=end)
+            queued.extend([state | partial, state | final])
+
+        def motion(point):
+            queued.append(state | {"pointer": point})
+
+        def reset(point):
+            self.assertEqual(point, [24, 640])
+            queued.append(initial | {"pointer": point})
+
+        app = Mock()
+        app.poll.return_value = None
+        screenshot = Mock()
+        with patch("rich_chat_resize.time.sleep"):
+            capture_resize(self.log.parent, app, record, drag, motion, reset, screenshot)
+        self.assertEqual(len(starts), 2)
+        self.assertEqual(screenshot.call_count, 3)
+        report = json.loads((self.log.parent / "input-resize.json").read_text())
+        self.assertEqual(report["status"], "passed")
+        self.assertEqual(report["checks"][0]["state"]["input_rows"], 14)
+        self.assertEqual(report["checks"][1]["state"]["input_rows"], 11)

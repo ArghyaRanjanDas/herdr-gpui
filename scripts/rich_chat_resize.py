@@ -5,6 +5,9 @@ import time
 
 
 def capture_resize(directory, app, record, drag, motion, double_click, capture):
+    def at_point(state, point):
+        return all(abs(state["pointer"][i] - point[i]) <= 1 for i in range(2))
+
     def wait_for(predicate):
         deadline = time.monotonic() + 4
         state = None
@@ -19,18 +22,27 @@ def capture_resize(directory, app, record, drag, motion, double_click, capture):
 
     initial = wait_for(lambda state: state["mode"] == "Auto")
     start = initial["divider"]
-    drag(start, [start[0], start[1] - 110])
-    enlarged = wait_for(lambda state: state["mode"].startswith("Rows(")
+    destination = [start[0], start[1] - 110]
+    drag(start, destination)
+    # XSync flushes to the X server, not the application's event queue. A
+    # partially processed drag already changes height; require its final
+    # pointer position before using the new grip coordinates for another drag.
+    enlarged = wait_for(lambda state: at_point(state, destination)
+                        and state["mode"].startswith("Rows(")
                         and state["input_rows"] > initial["input_rows"]
                         and state["conversation_rows"] < initial["conversation_rows"])
     capture(directory / "input-enlarged.png", enlarged["viewport"])
+    enlarged = wait_for(lambda state: at_point(state, destination))
 
     start = enlarged["divider"]
-    drag(start, [start[0], start[1] + 55])
-    reduced = wait_for(lambda state: state["mode"].startswith("Rows(")
+    destination = [start[0], start[1] + 55]
+    drag(start, destination)
+    reduced = wait_for(lambda state: at_point(state, destination)
+                       and state["mode"].startswith("Rows(")
                        and initial["input_rows"] <= state["input_rows"] < enlarged["input_rows"]
                        and state["conversation_rows"] > enlarged["conversation_rows"])
     capture(directory / "input-reduced.png", reduced["viewport"])
+    reduced = wait_for(lambda state: at_point(state, destination))
 
     # Moving after release must not keep resizing the pane.
     point = reduced["divider"]
@@ -38,8 +50,7 @@ def capture_resize(directory, app, record, drag, motion, double_click, capture):
     motion(destination)
     # Require the native window to observe this exact motion. Re-reading a
     # stale change-only geometry record could otherwise falsely pass.
-    released = wait_for(lambda state: all(abs(state["pointer"][i] - destination[i]) <= 1
-                                         for i in range(2)))
+    released = wait_for(lambda state: at_point(state, destination))
     if any(released[key] != reduced[key]
            for key in ("mode", "input_rows", "conversation_rows", "divider", "viewport")):
         raise AssertionError(f"Input divider continued dragging after release: {released!r}")
