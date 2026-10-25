@@ -4,6 +4,7 @@
 use super::{Card, Request, SliderDrag, button, field, label};
 use crate::{
     HerdrWindow,
+    chat::ChatInput,
     chat::widgets::{ActionMode, Point, Value, slider_value, snap},
     config::corners,
 };
@@ -357,7 +358,7 @@ impl HerdrWindow {
         mode: ActionMode,
         cx: &mut Context<Self>,
     ) -> Div {
-        let read_only = card.read_only;
+        let read_only = card.input != ChatInput::Composer;
         let request = card.request.clone();
         let prompt = prompt.to_owned();
         let caption = match mode {

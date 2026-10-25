@@ -3,7 +3,7 @@
 //! as Herdr's focus moves, and sending what the user asks.
 
 use super::{
-    chats::{self, Connect},
+    chats::{self, ChatInput, Connect},
     discovery,
     visual::{DiagramStyle, Output, VisualId},
 };
@@ -146,19 +146,22 @@ impl HerdrWindow {
                 changed = true;
                 cx.focus_handle()
             });
-            if pane.session.transcript().read_only {
+            match pane.input() {
+                ChatInput::Composer => {}
                 // An observed live agent still owns its original terminal
                 // editor below the rich conversation. It needs no second
                 // composer and must retain normal terminal focus and IME.
-                if pane.target.existing.is_some() {
+                ChatInput::Terminal => {
                     pane.read_only_focus = None;
                     continue;
                 }
-                pane.read_only_focus.get_or_insert_with(|| {
-                    changed = true;
-                    cx.focus_handle()
-                });
-                continue;
+                ChatInput::ReadOnly => {
+                    pane.read_only_focus.get_or_insert_with(|| {
+                        changed = true;
+                        cx.focus_handle()
+                    });
+                    continue;
+                }
             }
             let composer = pane.composer.get_or_insert_with(|| {
                 changed = true;
@@ -282,15 +285,13 @@ impl HerdrWindow {
         {
             return Some(focus.clone());
         }
-        if pane.target.existing.is_some() {
-            return None;
-        }
-        if pane.session.transcript().read_only {
-            pane.read_only_focus.clone()
-        } else {
-            pane.composer
+        match pane.input() {
+            ChatInput::Composer => pane
+                .composer
                 .as_ref()
-                .map(|input| input.read(cx).focus.clone())
+                .map(|input| input.read(cx).focus.clone()),
+            ChatInput::ReadOnly => pane.read_only_focus.clone(),
+            ChatInput::Terminal => None,
         }
     }
 
@@ -476,13 +477,14 @@ impl HerdrWindow {
         if pane.widgets.focused(window, cx) {
             return;
         }
-        if pane.target.existing.is_some() {
-            return;
-        }
-        if pane.session.transcript().read_only {
-            cx.stop_propagation();
-            window.prevent_default();
-            return;
+        match pane.input() {
+            ChatInput::Composer => {}
+            ChatInput::ReadOnly => {
+                cx.stop_propagation();
+                window.prevent_default();
+                return;
+            }
+            ChatInput::Terminal => return,
         }
         if let Some(search) = pane
             .menu_search
@@ -535,7 +537,7 @@ impl HerdrWindow {
             return;
         }
         if self.chats.pane(pane_id).is_some_and(|pane| {
-            pane.widgets.focused(window, cx) || pane.session.transcript().read_only
+            pane.widgets.focused(window, cx) || pane.input() != ChatInput::Composer
         }) {
             return;
         }
@@ -633,7 +635,7 @@ impl HerdrWindow {
         // An inert mirror focus still belongs to the chat. Consume Paste so
         // the terminal's action handler cannot paste beneath the overlay.
         if self.chats.pane(pane_id).is_some_and(|pane| {
-            pane.session.transcript().read_only
+            pane.input() == ChatInput::ReadOnly
                 && pane
                     .read_only_focus
                     .as_ref()
@@ -742,7 +744,7 @@ impl HerdrWindow {
         if self
             .chats
             .pane(pane_id)
-            .is_some_and(|pane| pane.session.transcript().read_only)
+            .is_some_and(|pane| pane.input() != ChatInput::Composer)
         {
             return;
         }
@@ -812,7 +814,7 @@ impl HerdrWindow {
         let Some(pane) = self.chats.pane_mut(pane_id) else {
             return;
         };
-        if pane.session.transcript().read_only {
+        if pane.input() != ChatInput::Composer {
             return;
         }
         for path in paths {

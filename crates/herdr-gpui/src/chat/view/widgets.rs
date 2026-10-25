@@ -3,6 +3,7 @@
 
 use super::super::{
     Target,
+    chats::ChatInput,
     prepared::{Body, Part},
     widgets::{ActionMode, Component, Document, Form, Input, Value, bounded_input},
 };
@@ -102,11 +103,11 @@ fn field(theme: &Theme, title: &str, control: impl IntoElement) -> Div {
 }
 
 /// One card's controls: what their edits carry, the card's local form once
-/// it is edited, and whether the transcript takes actions.
+/// it is edited, and what takes the chat's prompts, which actions need.
 struct Card<'a> {
     request: Request,
     form: Option<&'a Form>,
-    read_only: bool,
+    input: ChatInput,
 }
 
 impl Card<'_> {
@@ -142,7 +143,7 @@ impl HerdrWindow {
         };
         let card = Card {
             form: pane.widgets.form(request.key(), document),
-            read_only: pane.session.transcript().read_only,
+            input: pane.input(),
             request,
         };
         let prefix = format!("widget-{pane_id}-{}-{block}", entry.0);
@@ -359,7 +360,7 @@ impl HerdrWindow {
         let Some(pane) = self.chats.pane_mut(&request.target.pane_id) else {
             return;
         };
-        if pane.session.transcript().read_only {
+        if pane.input() != ChatInput::Composer {
             return;
         }
         let form = pane.widgets.edit(request.key(), &request.document);

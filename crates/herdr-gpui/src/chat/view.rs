@@ -22,7 +22,7 @@ mod widgets;
 pub(super) use settings::matching;
 mod visuals;
 
-use super::chats::ChatPane;
+use super::chats::{ChatInput, ChatPane};
 use crate::{
     HerdrWindow,
     config::{Theme, corners},
@@ -258,9 +258,9 @@ impl HerdrWindow {
             .id(SharedString::from(format!("chat-{pane_id}")))
             .debug_selector(|| "chat-view".into())
             .when_some(
-                chat.read_only_focus.as_ref().filter(|_| {
-                    chat.session.transcript().read_only && chat.target.existing.is_none()
-                }),
+                chat.read_only_focus
+                    .as_ref()
+                    .filter(|_| chat.input() == ChatInput::ReadOnly),
                 |view, focus| view.track_focus(focus),
             )
             .absolute()
@@ -383,7 +383,7 @@ impl HerdrWindow {
                                 self.render_chat_completions(chat, cx)
                                     .map(|content| self.chat_column(content)),
                             )
-                            .when(chat.target.existing.is_none(), |view| {
+                            .when(chat.input() != ChatInput::Terminal, |view| {
                                 view.child(self.chat_column(self.render_chat_composer(chat, cx)))
                             }),
                     )
@@ -453,24 +453,22 @@ impl HerdrWindow {
     /// Gives the chat's composer the keyboard and makes its pane Herdr's
     /// focused one.
     fn focus_chat(&mut self, pane_id: &str, window: &mut Window, cx: &mut Context<Self>) {
-        if self
-            .chats
-            .pane(pane_id)
-            .is_some_and(|pane| pane.target.existing.is_some())
-        {
+        if self.chats.pane(pane_id).map(ChatPane::input) == Some(ChatInput::Terminal) {
             self.focus_existing_chat_input(pane_id, window, cx);
             return;
         }
         self.note_input();
-        let focus = self.chats.pane(pane_id).and_then(|pane| {
-            if pane.session.transcript().read_only {
-                pane.read_only_focus.clone()
-            } else {
-                pane.composer
+        let focus = self
+            .chats
+            .pane(pane_id)
+            .and_then(|pane| match pane.input() {
+                ChatInput::Composer => pane
+                    .composer
                     .as_ref()
-                    .map(|input| input.read(cx).focus.clone())
-            }
-        });
+                    .map(|input| input.read(cx).focus.clone()),
+                ChatInput::ReadOnly => pane.read_only_focus.clone(),
+                ChatInput::Terminal => None,
+            });
         if let Some(focus) = focus {
             window.focus(&focus, cx);
         }
@@ -523,16 +521,17 @@ impl HerdrWindow {
                 .hover(|button| button.bg(rgb(theme.active)))
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         };
-        let cancel = (*status == Status::Working && !transcript.read_only).then(|| {
-            let pane_id = pane_id.clone();
-            button("chat-cancel")
-                .text_color(rgb(hues.red))
-                .child("Stop")
-                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                    cx.stop_propagation();
-                    this.chat_send(&pane_id, Command::Cancel, cx);
-                }))
-        });
+        let cancel =
+            (*status == Status::Working && chat.input() == ChatInput::Composer).then(|| {
+                let pane_id = pane_id.clone();
+                button("chat-cancel")
+                    .text_color(rgb(hues.red))
+                    .child("Stop")
+                    .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                        cx.stop_propagation();
+                        this.chat_send(&pane_id, Command::Cancel, cx);
+                    }))
+            });
         let watching = (transcript.clients > 1).then(|| {
             div()
                 .flex_none()

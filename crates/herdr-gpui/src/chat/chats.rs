@@ -91,6 +91,19 @@ pub(crate) enum Menu {
     Settings,
 }
 
+/// What takes the user's typing in a chat.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ChatInput {
+    /// The chat's own composer, which sends prompts.
+    Composer,
+    /// Nothing: the transcript takes no prompts, and an inert focus keeps
+    /// keys from reaching the terminal beneath the chat.
+    ReadOnly,
+    /// An observed live agent's own editor, in its terminal below the
+    /// conversation. Its mirrored transcript is read-only as well.
+    Terminal,
+}
+
 pub(crate) struct ChatPane {
     /// Files the next prompt carries, in the order they were added.
     pub(crate) attachments: Vec<std::path::PathBuf>,
@@ -332,6 +345,17 @@ impl ChatPane {
     pub(crate) fn remeasure(&self, id: EntryId) {
         if let Some(index) = self.list_keys.iter().position(|(entry, _)| *entry == id) {
             super::glide::splice_in_place(&self.list, index..index + 1, 1);
+        }
+    }
+
+    /// What takes the user's typing for this chat.
+    pub(crate) fn input(&self) -> ChatInput {
+        if self.target.existing.is_some() {
+            ChatInput::Terminal
+        } else if self.session.transcript().read_only {
+            ChatInput::ReadOnly
+        } else {
+            ChatInput::Composer
         }
     }
 
