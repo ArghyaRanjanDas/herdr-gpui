@@ -1,0 +1,213 @@
+{
+  "kind": "real-native-fixture-screenshots",
+  "captured_at_utc": "2026-10-25T02:16:49.219005+00:00",
+  "feature_commit": "436dc1aecdb08cac72ecc42caf9599d3629dfa43",
+  "binary_source_commit": "fdb22e2ce147a4ed7000a61d7d87e858af2b24da",
+  "binary_sha256": "47e75d47b3e5fb2c371ad7b6c1cbc34a6105c324bcddc0499289bee8dc1c7c3f",
+  "binary_source_manifest_sha256": "310810036d349f0000b660553d6144ca95235259f6478fab296aa83590291027",
+  "feature_source_manifest_sha256": "c54dc04e4c9adde0315f8cad41977eb025562ebec2ae537ee9cd8ee1b92abe54",
+  "driver_hashes": {
+    "scripts/check-rich-chat-native.py": "766c9766f63cbd3fb5d78f49515aea1c40fcc182e003cc638fe6c537eb7b8166",
+    "scripts/rich_chat_native_input.py": "fe038947de39ac1b76d28209eb1c741973b0cb97211f997fc8a01d777697444a",
+    "scripts/rich_chat_resize.py": "254e0b9c237fec98a3f89332263542fb3661511092af28a3a7d27ca1b5465758"
+  },
+  "method": "Direct capture of the real native X11 window on a private Xvfb display. Window resizing, scrolling, selection, and divider dragging used native X11/XTest events. Captured RGB pixels were losslessly encoded as PNG with metadata stripped; no content was composited, retouched, or generated.",
+  "isolation": "Private HOME/XDG/display, desktop D-Bus and SSH agent environment removed, browser openers intercepted. No daemon or agent connection. Fixture windows ran sequentially with one CPU and 4 GiB memory, zero swap, low priority, and the shared build lock.",
+  "cleanup": "All three owned capture scopes inactive; every fixture exited successfully and its private X server was stopped and waited.",
+  "content": "Existing safe synthetic fixture transcripts only. These are native presentation examples, not live-agent end-to-end screenshots.",
+  "source_changes": false,
+  "rebuilds": false,
+  "application_restart_or_deployment": false,
+  "attachment_pixel_check": {
+    "origin": [
+      786,
+      224
+    ],
+    "interior_pixels": 22464,
+    "mismatches": 0
+  },
+  "images": [
+    {
+      "file": "hero.png",
+      "caption": "Native Document layout: readable prose, inline and display equations, a table containing math, and syntax-highlighted Python with copy controls.",
+      "sha256": "c94e52b0de1a264e50b2cfc26a24b217e3ff33ae3bbf8db01fcaec12a1625434",
+      "bytes": 118549,
+      "dimensions": [
+        1280,
+        1160
+      ],
+      "fixture_case": "math",
+      "theme": "dark",
+      "layout": "document",
+      "reading_column_pixels": 880,
+      "capture_action": "top",
+      "capture_harness_sha256": "a8f3db03c3c7481e2874204eecfa9dbbc02e97e46d8ada8456b7f464ae18658c",
+      "visual_review": "passed",
+      "recommended_placement": "lead"
+    },
+    {
+      "file": "widgets-results.png",
+      "caption": "Native interactive card, scrolled to its input, comparison table, chart, and review/send controls; all values are illustrative.",
+      "sha256": "1bbecd0104ee1e28f795810169a31bca606e178949567ea90cab6fd5d1b4c5be",
+      "bytes": 79807,
+      "dimensions": [
+        1280,
+        860
+      ],
+      "fixture_case": "widgets-end",
+      "theme": "dark",
+      "layout": "cards",
+      "reading_column_pixels": 880,
+      "capture_action": "bottom",
+      "capture_harness_sha256": "a8f3db03c3c7481e2874204eecfa9dbbc02e97e46d8ada8456b7f464ae18658c",
+      "visual_review": "passed",
+      "recommended_placement": "feature-tour"
+    },
+    {
+      "file": "diagram.png",
+      "caption": "Native Mermaid flow diagram embedded in the same transcript.",
+      "sha256": "30e59a8f53b23c7975a61c5aaa5457ca06e79a76d3562e38879306c6c8efd605",
+      "bytes": 63891,
+      "dimensions": [
+        1280,
+        650
+      ],
+      "fixture_case": "diagram",
+      "theme": "dark",
+      "layout": "document",
+      "reading_column_pixels": 880,
+      "capture_action": "top",
+      "capture_harness_sha256": "bd6874d5ec5f1b432f8e07b801f69fbc51d6fdde2ef47f3179c78be8445881e6",
+      "visual_review": "passed",
+      "recommended_placement": "feature-tour"
+    },
+    {
+      "file": "user-light.png",
+      "caption": "Light theme in a 650-pixel-wide native window: a rich user message with math, inline code, highlighted Python, and a table in iMessage layout.",
+      "sha256": "37fa932fa986ca9bc864caa44d3e96bfdf6f2865464e52214f3b5364a84ba8bf",
+      "bytes": 48969,
+      "dimensions": [
+        650,
+        700
+      ],
+      "fixture_case": "user",
+      "theme": "light",
+      "layout": "imessage",
+      "reading_column_pixels": 800,
+      "capture_action": "top",
+      "capture_harness_sha256": "c5cad5aa56e752ae106f9a1cae83fa9d26b3cbe79f3d439e8da256b6132ef62d",
+      "visual_review": "passed",
+      "recommended_placement": "feature-tour"
+    },
+    {
+      "file": "questions.png",
+      "caption": "Recorded questions and answers rendered as a structured native card, including inline math, highlighted code, copy controls, and collapsed original source.",
+      "sha256": "ac76ad6f061d2bc77749bd1a3bc763c37c7ea774a86575106bfbe3f98c28faae",
+      "bytes": 69852,
+      "dimensions": [
+        850,
+        850
+      ],
+      "fixture_case": "questions",
+      "theme": "light",
+      "layout": "cards",
+      "reading_column_pixels": 800,
+      "capture_action": "top",
+      "capture_harness_sha256": "c5cad5aa56e752ae106f9a1cae83fa9d26b3cbe79f3d439e8da256b6132ef62d",
+      "visual_review": "passed",
+      "recommended_placement": "feature-tour"
+    },
+    {
+      "file": "notices.png",
+      "caption": "Background notifications and reminders appear as compact, expandable native activity rows.",
+      "sha256": "86110d751789a5b706138149f946ef57a117167cb9f1084df06ada27c23f1ce1",
+      "bytes": 71339,
+      "dimensions": [
+        1100,
+        550
+      ],
+      "fixture_case": "activity",
+      "theme": "light",
+      "layout": "cards",
+      "reading_column_pixels": 800,
+      "capture_action": "top",
+      "capture_harness_sha256": "c5cad5aa56e752ae106f9a1cae83fa9d26b3cbe79f3d439e8da256b6132ef62d",
+      "visual_review": "passed",
+      "recommended_placement": "feature-tour"
+    },
+    {
+      "file": "attachments.png",
+      "caption": "A synthetic image attachment and a labelled local-document link, with environment metadata kept in compact notices.",
+      "sha256": "62ba829cdabd10aa3d14d6dbd89c0f7589d12884be4bf0d2daa0f27f6af57f54",
+      "bytes": 65544,
+      "dimensions": [
+        1100,
+        750
+      ],
+      "fixture_case": "attachments",
+      "theme": "dark",
+      "layout": "cards",
+      "reading_column_pixels": 800,
+      "capture_action": "top",
+      "capture_harness_sha256": "c5cad5aa56e752ae106f9a1cae83fa9d26b3cbe79f3d439e8da256b6132ef62d",
+      "visual_review": "passed",
+      "recommended_placement": "feature-tour"
+    },
+    {
+      "file": "original-input.png",
+      "caption": "The rich answer remains above the original agent input; its divider was physically dragged to increase the input area in this isolated fixture.",
+      "sha256": "2e6ee6d089a78d6c254880214a4c38fdece757651b81ed30e2f0dcea7bc71efe",
+      "bytes": 126973,
+      "dimensions": [
+        1280,
+        1100
+      ],
+      "fixture_case": "input-resize",
+      "theme": "dark",
+      "layout": "document",
+      "reading_column_pixels": 880,
+      "capture_action": "resize",
+      "capture_harness_sha256": "a8f3db03c3c7481e2874204eecfa9dbbc02e97e46d8ada8456b7f464ae18658c",
+      "visual_review": "passed",
+      "recommended_placement": "feature-tour"
+    },
+    {
+      "file": "widgets.png",
+      "caption": "Complete native interactive card with choice, toggle, slider, input, metric, table, chart, and actions; no action was submitted.",
+      "sha256": "ab2f31e1f9079b0065b3bfd461c5c26c420c4c882ab9190e5e725de91795be83",
+      "bytes": 140599,
+      "dimensions": [
+        1280,
+        1660
+      ],
+      "fixture_case": "widgets",
+      "theme": "dark",
+      "layout": "cards",
+      "reading_column_pixels": 880,
+      "capture_action": "top",
+      "capture_harness_sha256": "a8f3db03c3c7481e2874204eecfa9dbbc02e97e46d8ada8456b7f464ae18658c",
+      "visual_review": "passed",
+      "recommended_placement": "collapsed-gallery"
+    },
+    {
+      "file": "selection.png",
+      "caption": "One deliberate native text selection spanning Unicode prose, code, and right-aligned table cells; Ctrl+C was checked against the exact expected text.",
+      "sha256": "b98a4f17e0003ff89253229c7bfb65b0f63be917e5a52b23e4006df7c9d83e0c",
+      "bytes": 69637,
+      "dimensions": [
+        1280,
+        860
+      ],
+      "fixture_case": "selection",
+      "theme": "dark",
+      "layout": "document",
+      "reading_column_pixels": 800,
+      "capture_action": "selection",
+      "capture_harness_sha256": "a8f3db03c3c7481e2874204eecfa9dbbc02e97e46d8ada8456b7f464ae18658c",
+      "visual_review": "passed",
+      "recommended_placement": "collapsed-gallery"
+    }
+  ],
+  "tracked_rust_manifests_and_bundled_assets_identical": true,
+  "renderer_equivalence_note": "Tracked Rust source, dependency manifests and bundled assets are identical between fdb22e2c and436dc1ae. The binary retains its actual fdb22e2c Git build revision; only Python capture/test drivers changed afterward."
+}
