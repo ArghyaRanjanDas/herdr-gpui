@@ -217,7 +217,7 @@ fn projected_question_and_answer_text_counts_toward_retention() {
         0,
     );
     assert_eq!(
-        weight(&transcript.entries[1]),
+        crate::session::entry_size(&transcript.entries[1]),
         "Question answered".len() + source.len() + "Question?".len() + "Answer".len()
     );
 }

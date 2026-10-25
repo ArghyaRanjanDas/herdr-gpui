@@ -4,6 +4,7 @@ use super::*;
 use serde_json::json;
 use std::io::Write as _;
 
+mod bounds;
 mod codex_messages;
 mod metadata;
 mod notices;

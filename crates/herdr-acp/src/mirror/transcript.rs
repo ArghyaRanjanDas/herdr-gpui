@@ -17,7 +17,7 @@ use serde_json::Value;
 
 use crate::{
     agents::Agent,
-    session::{MAX_ENTRIES, MAX_TRANSCRIPT_MEDIA, MAX_TRANSCRIPT_TEXT},
+    session::{MAX_ENTRIES, MAX_TRANSCRIPT_TEXT, keep_from},
 };
 
 mod codex_messages;
@@ -447,55 +447,12 @@ fn parse(agent: Agent, bytes: &[u8], mut offset: u64) -> Transcript {
         }
     }
     let transcript = &mut projection.transcript;
-    let mut bytes = 0;
-    let mut media = 0;
-    let mut keep = transcript.entries.len();
-    for entry in transcript.entries.iter().rev().take(MAX_ENTRIES) {
-        bytes += weight(entry);
-        if let EntryKind::Image { image, .. } = &entry.kind {
-            media += image.data.len();
-        }
-        if bytes > MAX_TRANSCRIPT_TEXT || media > MAX_TRANSCRIPT_MEDIA {
-            break;
-        }
-        keep -= 1;
-    }
+    let keep = keep_from(&transcript.entries);
     if keep > 0 {
         transcript.entries.drain(..keep);
         transcript.truncated = true;
     }
     projection.transcript
-}
-
-fn weight(entry: &Entry) -> usize {
-    match &entry.kind {
-        EntryKind::Notice {
-            answers,
-            details,
-            text,
-            ..
-        } => {
-            text.len()
-                + details.as_ref().map_or(0, String::len)
-                + answers
-                    .iter()
-                    .map(|answer| answer.question.len() + answer.answer.len())
-                    .sum::<usize>()
-        }
-        EntryKind::Tool(tool) => {
-            tool.call_id.len()
-                + tool.title.len()
-                + tool
-                    .content
-                    .iter()
-                    .map(|content| match content {
-                        ToolContent::Text { text } => text.len(),
-                        _ => 0,
-                    })
-                    .sum::<usize>()
-        }
-        _ => entry.kind.text().map_or(0, str::len),
-    }
 }
 
 #[cfg(test)]

@@ -12,6 +12,7 @@ use crate::rpc::{Inbound, Outbox};
 mod attach;
 mod attachments;
 mod auto_accept;
+mod bounds;
 mod commands;
 mod flow;
 mod linked_pictures;

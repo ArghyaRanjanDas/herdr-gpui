@@ -1,6 +1,8 @@
 use super::*;
 use herdr_chat_protocol::{Author, ImageType};
 
+use crate::session::MAX_TRANSCRIPT_MEDIA;
+
 const ENVIRONMENT: &str = "<environment_context>\n<current_date>2026-10-24</current_date>\n<cwd>/unopened/project</cwd>\n</environment_context>";
 const PNG: &str = "iVBORw0KGgo=";
 

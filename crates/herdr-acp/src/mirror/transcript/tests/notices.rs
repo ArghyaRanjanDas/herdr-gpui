@@ -137,6 +137,13 @@ fn notice_details_obey_field_and_transcript_limits_with_an_explicit_cut_marker()
         .collect::<Vec<_>>();
     let transcript = parse(Agent::Claude, &lines(&records), 0);
     assert!(transcript.entries.len() < records.len());
-    assert!(transcript.entries.iter().map(weight).sum::<usize>() <= MAX_TRANSCRIPT_TEXT);
+    assert!(
+        transcript
+            .entries
+            .iter()
+            .map(crate::session::entry_size)
+            .sum::<usize>()
+            <= MAX_TRANSCRIPT_TEXT
+    );
     assert!(transcript.truncated);
 }
