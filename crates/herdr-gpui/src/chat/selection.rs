@@ -4,19 +4,57 @@ mod document;
 
 pub(crate) use document::{Document, Segment};
 
+use document::Order;
 use herdr_chat_protocol::EntryId;
 use std::ops::Range;
 
-/// Reserved parts for the label and original record around historical Q&A.
-pub(crate) const LABEL_PART: usize = usize::MAX - 1;
-pub(crate) const DETAILS_PART: usize = usize::MAX;
+/// Which of an entry's texts a segment belongs to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum Region {
+    /// One prepared body part, by index. An entry drawn without prepared
+    /// parts, such as a notice or a folded summary, has its text in `Body(0)`.
+    Body(usize),
+    /// The original record behind a notice, shown when it is expanded.
+    Details,
+    /// The header above historical Q&A or a tool call.
+    Label,
+    /// An expanded tool call's output, one block per content item.
+    ToolContent,
+    /// An expanded tool call's locations, one row each.
+    ToolLocations,
+    /// An expanded tool call's full title.
+    ToolTitle,
+}
+
+/// Where a segment sits in its region: the block, the row within it, and
+/// the table column.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub(crate) struct Cell {
+    pub(crate) block: usize,
+    pub(crate) row: usize,
+    pub(crate) column: usize,
+}
+
+impl Cell {
+    pub(crate) fn block(block: usize) -> Self {
+        Self {
+            block,
+            ..Self::default()
+        }
+    }
+
+    pub(crate) fn row(row: usize) -> Self {
+        Self {
+            row,
+            ..Self::default()
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct Position {
-    part: usize,
-    block: usize,
-    row: usize,
-    column: usize,
+    region: Region,
+    cell: Cell,
 }
 
 /// A text segment in one exact prepared revision and snapshot. Old callbacks
@@ -205,11 +243,14 @@ impl Selection {
             .entries
             .iter()
             .enumerate()
-            .take(to.0 + 1)
-            .skip(from.0)
+            .take(to.entry + 1)
+            .skip(from.entry)
         {
             for (segment_index, segment) in entry.segments.iter().enumerate() {
-                let position = (entry_index, segment_index);
+                let position = Order {
+                    entry: entry_index,
+                    segment: segment_index,
+                };
                 if position < from || position > to {
                     continue;
                 }
@@ -264,7 +305,7 @@ impl RangeSelection {
             return;
         };
         self.covered.extend(
-            document.entries[start.0..=end.0]
+            document.entries[start.entry..=end.entry]
                 .iter()
                 .map(|entry| (entry.id, entry.version)),
         );
@@ -277,7 +318,7 @@ impl RangeSelection {
         let (Some(start), Some(end)) = (document.order(start.key), document.order(end.key)) else {
             return false;
         };
-        document.entries[start.0..=end.0]
+        document.entries[start.entry..=end.entry]
             .iter()
             .map(|entry| (entry.id, entry.version))
             .eq(self.covered.iter().copied())

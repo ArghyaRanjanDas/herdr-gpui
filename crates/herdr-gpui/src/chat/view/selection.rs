@@ -3,7 +3,7 @@
 
 use crate::{
     HerdrWindow,
-    chat::selection::{Caret, Document, Key, Segment, Selection},
+    chat::selection::{Caret, Cell, Document, Key, Region, Segment, Selection},
     config::Theme,
 };
 use gpui::{prelude::*, *};
@@ -256,7 +256,7 @@ impl Geometry {
 pub(crate) struct Scope<'a> {
     pane: &'a str,
     entry: EntryId,
-    part: usize,
+    region: Region,
     document: &'a Document,
     selection: &'a Selection,
     geometry: &'a Geometry,
@@ -266,7 +266,7 @@ impl<'a> Scope<'a> {
     pub(crate) fn new(
         pane: &'a str,
         entry: EntryId,
-        part: usize,
+        region: Region,
         document: &'a Document,
         selection: &'a Selection,
         geometry: &'a Geometry,
@@ -274,17 +274,15 @@ impl<'a> Scope<'a> {
         Self {
             pane,
             entry,
-            part,
+            region,
             document,
             selection,
             geometry,
         }
     }
 
-    pub(crate) fn fragment(&self, block: usize, row: usize, column: usize) -> Option<Fragment> {
-        let key = self
-            .document
-            .key(self.entry, self.part, block, row, column)?;
+    pub(crate) fn fragment(&self, cell: Cell) -> Option<Fragment> {
+        let key = self.document.key(self.entry, self.region, cell)?;
         let segment = self.document.segment(key)?;
         Some(Fragment {
             pane: self.pane.to_owned(),
@@ -297,15 +295,13 @@ impl<'a> Scope<'a> {
         })
     }
 
-    pub(crate) fn segment(&self, block: usize, row: usize, column: usize) -> Option<&Segment> {
-        self.document.segment(
-            self.document
-                .key(self.entry, self.part, block, row, column)?,
-        )
+    pub(crate) fn segment(&self, cell: Cell) -> Option<&Segment> {
+        self.document
+            .segment(self.document.key(self.entry, self.region, cell)?)
     }
 
-    pub(crate) fn text(&self, block: usize, row: usize, column: usize) -> Option<&str> {
-        self.segment(block, row, column).map(Segment::text)
+    pub(crate) fn text(&self, cell: Cell) -> Option<&str> {
+        self.segment(cell).map(Segment::text)
     }
 }
 

@@ -1,7 +1,7 @@
 use super::*;
 use crate::chat::{
     rich::{CodeText, MAX_CODE_LINES},
-    selection::Segment,
+    selection::{Cell, Segment},
 };
 use crate::review::highlight::Span;
 use std::sync::Arc;
@@ -26,7 +26,11 @@ impl HerdrWindow {
                     .map_or(&[][..], Vec::as_slice);
                 match context
                     .selection
-                    .segment(block, index, 0)
+                    .segment(Cell {
+                        block,
+                        row: index,
+                        column: 0,
+                    })
                     .and_then(Segment::code)
                 {
                     Some(code) => highlighted(code, raw, spans),
@@ -79,7 +83,7 @@ impl HerdrWindow {
                                 ..Default::default()
                             })
                         });
-                        let fragment = context.selection.fragment(block, index, 0);
+                        let fragment = context.selection.fragment(Cell { block, row: index, column: 0 });
                         let styled = match &fragment {
                             Some(fragment) => fragment.styled(line.text, marks, &self.theme),
                             None => StyledText::new(line.text).with_highlights(marks),

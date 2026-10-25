@@ -1,6 +1,6 @@
 //! A cached readable projection of prepared bodies, in transcript order.
 
-use super::{Caret, DETAILS_PART, Key, LABEL_PART, Position};
+use super::{Caret, Cell, Key, Position, Region};
 use crate::{
     chat::{
         prepared::{Body, Part, tool_label, tool_text},
@@ -110,6 +110,14 @@ pub(super) struct EntryText {
     positions: HashMap<Position, usize>,
 }
 
+/// A segment's place in transcript order: its entry's index, then its own
+/// index within the entry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) struct Order {
+    pub(super) entry: usize,
+    pub(super) segment: usize,
+}
+
 #[derive(Default)]
 pub(crate) struct Document {
     pub(super) entries: Vec<Rc<EntryText>>,
@@ -121,21 +129,9 @@ pub(crate) struct Document {
 }
 
 impl Document {
-    pub(crate) fn key(
-        &self,
-        entry: EntryId,
-        part: usize,
-        block: usize,
-        row: usize,
-        column: usize,
-    ) -> Option<Key> {
+    pub(crate) fn key(&self, entry: EntryId, region: Region, cell: Cell) -> Option<Key> {
         let projection = self.entries.get(*self.positions.get(&entry)?)?;
-        let position = Position {
-            part,
-            block,
-            row,
-            column,
-        };
+        let position = Position { region, cell };
         projection.positions.get(&position)?;
         Some(Key {
             entry,
@@ -146,18 +142,21 @@ impl Document {
     }
 
     pub(crate) fn segment(&self, key: Key) -> Option<&Segment> {
-        let (entry, segment) = self.order(key)?;
-        self.entries.get(entry)?.segments.get(segment)
+        let order = self.order(key)?;
+        self.entries.get(order.entry)?.segments.get(order.segment)
     }
 
-    pub(super) fn order(&self, key: Key) -> Option<(usize, usize)> {
+    pub(super) fn order(&self, key: Key) -> Option<Order> {
         if key.epoch != self.epoch {
             return None;
         }
         let entry = *self.positions.get(&key.entry)?;
         let projection = self.entries.get(entry)?;
         (projection.version == key.revision).then_some(())?;
-        Some((entry, *projection.positions.get(&key.position)?))
+        Some(Order {
+            entry,
+            segment: *projection.positions.get(&key.position)?,
+        })
     }
 
     pub(super) fn ends(&self) -> Option<(Caret, Caret)> {
@@ -263,35 +262,38 @@ fn project(
         Some(Body::Message(parts)) => builder.parts(parts),
         Some(Body::Answers { parts, .. }) => {
             if let EntryKind::Notice { text, .. } = &entry.kind {
-                builder.plain(LABEL_PART, 0, 0, crate::notifications::safe_text(text, 240));
+                builder.plain(
+                    Region::Label,
+                    Cell::default(),
+                    crate::notifications::safe_text(text, 240),
+                );
             }
             builder.parts(parts);
         }
         Some(Body::Summary(summary)) => {
             if expanded {
                 for (index, line) in summary.lines.iter().enumerate() {
-                    builder.plain(0, 0, index, line.text.clone());
+                    builder.plain(Region::Body(0), Cell::row(index), line.text.clone());
                 }
             } else {
-                builder.plain(0, 0, 0, summary.gist.clone());
+                builder.plain(Region::Body(0), Cell::default(), summary.gist.clone());
             }
         }
         Some(Body::Tool(_)) => {
             if let EntryKind::Tool(tool) = &entry.kind {
                 builder.plain(
-                    LABEL_PART,
-                    0,
-                    0,
+                    Region::Label,
+                    Cell::default(),
                     crate::notifications::safe_text(tool_label(&tool.title), 300),
                 );
                 if expanded {
-                    builder.plain(0, 0, 0, tool.title.clone());
+                    builder.plain(Region::ToolTitle, Cell::default(), tool.title.clone());
                     for (row, location) in tool.locations.iter().enumerate() {
-                        builder.plain(1, 0, row, location.clone());
+                        builder.plain(Region::ToolLocations, Cell::row(row), location.clone());
                     }
                     for (block, content) in tool.content.iter().enumerate() {
                         if let Some(text) = tool_text(content) {
-                            builder.plain(2, block, 0, text);
+                            builder.plain(Region::ToolContent, Cell::block(block), text);
                         }
                     }
                 }
@@ -304,21 +306,31 @@ fn project(
                     .lines()
                     .find(|line| !line.trim().is_empty())
                     .unwrap_or("");
-                builder.plain(0, 0, 0, crate::notifications::safe_text(first, 120));
+                builder.plain(
+                    Region::Body(0),
+                    Cell::default(),
+                    crate::notifications::safe_text(first, 120),
+                );
             }
             EntryKind::Notice {
                 text,
                 details: Some(_),
                 ..
-            } => builder.plain(0, 0, 0, crate::notifications::safe_text(text, 240)),
+            } => builder.plain(
+                Region::Body(0),
+                Cell::default(),
+                crate::notifications::safe_text(text, 240),
+            ),
             EntryKind::User { text }
             | EntryKind::Agent { text }
             | EntryKind::Thought { text }
             | EntryKind::Notice { text, .. } => {
                 let end = text.floor_char_boundary(text.len().min(256 * 1024));
-                builder.plain(0, 0, 0, text[..end].to_owned());
+                builder.plain(Region::Body(0), Cell::default(), text[..end].to_owned());
             }
-            EntryKind::Turn(turn) => builder.plain(0, 0, 0, turn.describe()),
+            EntryKind::Turn(turn) => {
+                builder.plain(Region::Body(0), Cell::default(), turn.describe())
+            }
             EntryKind::Tool(_) | EntryKind::Image { .. } => {}
         },
     }
@@ -329,7 +341,7 @@ fn project(
         } = &entry.kind
     {
         let end = details.floor_char_boundary(details.len().min(256 * 1024));
-        builder.plain(DETAILS_PART, 0, 0, details[..end].to_owned());
+        builder.plain(Region::Details, Cell::default(), details[..end].to_owned());
     }
     let positions = builder
         .segments
@@ -368,28 +380,21 @@ impl Builder {
         });
     }
 
-    fn plain(&mut self, part: usize, block: usize, row: usize, text: String) {
+    fn plain(&mut self, region: Region, cell: Cell, text: String) {
         self.push(
-            Position {
-                part,
-                block,
-                row,
-                column: 0,
-            },
+            Position { region, cell },
             Text::Owned(text),
             Vec::new(),
             "\n",
         );
     }
 
-    fn lines(&mut self, part: usize, lines: &Rc<[Line]>) {
+    fn lines(&mut self, region: Region, lines: &Rc<[Line]>) {
         for (row, _) in lines.iter().enumerate() {
             self.push(
                 Position {
-                    part,
-                    block: 0,
-                    row,
-                    column: 0,
+                    region,
+                    cell: Cell::row(row),
                 },
                 Text::Lines(lines.clone(), row),
                 Vec::new(),
@@ -399,16 +404,17 @@ impl Builder {
     }
 
     fn parts(&mut self, parts: &[Part]) {
-        for (part, content) in parts.iter().enumerate() {
+        for (index, content) in parts.iter().enumerate() {
+            let region = Region::Body(index);
             let first = self.segments.len();
             match content {
-                Part::Rich(blocks) => self.blocks(part, blocks),
-                Part::Text(lines) => self.lines(part, lines),
+                Part::Rich(blocks) => self.blocks(region, blocks),
+                Part::Text(lines) => self.lines(region, lines),
                 // Source owned by a preview/card is not visible transcript
                 // text. A range across it must never reveal the hidden payload.
                 Part::Diagram(_, _) | Part::Html { .. } | Part::Widget(_) => {}
                 Part::Picture { alt } | Part::Remote { alt, .. } => {
-                    self.plain(part, 0, 0, alt.clone())
+                    self.plain(region, Cell::default(), alt.clone())
                 }
             }
             if let Some(segment) = self.segments.get_mut(first) {
@@ -417,13 +423,11 @@ impl Builder {
         }
     }
 
-    fn blocks(&mut self, part: usize, blocks: &[Block]) {
+    fn blocks(&mut self, region: Region, blocks: &[Block]) {
         for (block, content) in blocks.iter().enumerate() {
             let position = Position {
-                part,
-                block,
-                row: 0,
-                column: 0,
+                region,
+                cell: Cell::block(block),
             };
             match content {
                 Block::Paragraph { kind, content, .. } => {
@@ -449,7 +453,14 @@ impl Builder {
                             .map(|line| line.strip_suffix('\r').unwrap_or(line))
                             .unwrap_or(raw);
                         self.push(
-                            Position { row, ..position },
+                            Position {
+                                cell: Cell {
+                                    block,
+                                    row,
+                                    column: 0,
+                                },
+                                ..position
+                            },
                             Text::Code {
                                 line: CodeText::expand(line),
                                 source: source.clone(),
@@ -466,8 +477,7 @@ impl Builder {
                         for (column, content) in cells.iter().enumerate() {
                             self.inline(
                                 Position {
-                                    row,
-                                    column,
+                                    cell: Cell { block, row, column },
                                     ..position
                                 },
                                 content,

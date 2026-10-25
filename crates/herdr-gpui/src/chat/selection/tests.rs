@@ -37,7 +37,9 @@ fn caret(
     offset: usize,
 ) -> Caret {
     Caret {
-        key: document.key(EntryId(entry), 0, block, row, column).unwrap(),
+        key: document
+            .key(EntryId(entry), Region::Body(0), Cell { block, row, column })
+            .unwrap(),
         offset,
     }
 }
@@ -252,14 +254,22 @@ fn notice_answers_and_inert_source_have_distinct_segments() {
     let document = prepared.text();
     assert_eq!(
         document
-            .segment(document.key(EntryId(4), LABEL_PART, 0, 0, 0).unwrap())
+            .segment(
+                document
+                    .key(EntryId(4), Region::Label, Cell::default())
+                    .unwrap()
+            )
             .unwrap()
             .text(),
         "Questions answered"
     );
     assert_eq!(
         document
-            .segment(document.key(EntryId(4), DETAILS_PART, 0, 0, 0).unwrap())
+            .segment(
+                document
+                    .key(EntryId(4), Region::Details, Cell::default())
+                    .unwrap()
+            )
             .unwrap()
             .text(),
         "<record>source</record>"
@@ -316,12 +326,18 @@ fn code_projection_obeys_preview_bounds_without_copying_full_source() {
     )]);
     let mut document = Document::default();
     document.update(&transcript, &[(EntryId(1), 1)], &bodies);
-    let key = document.key(EntryId(1), 0, 0, 0, 0).unwrap();
+    let key = document
+        .key(EntryId(1), Region::Body(0), Cell::default())
+        .unwrap();
     assert_eq!(
         document.segment(key).unwrap().text().chars().count(),
         MAX_CODE_LINE_CHARS
     );
-    assert!(document.key(EntryId(1), 0, 0, MAX_CODE_LINES, 0).is_none());
+    assert!(
+        document
+            .key(EntryId(1), Region::Body(0), Cell::row(MAX_CODE_LINES))
+            .is_none()
+    );
 }
 
 #[test]

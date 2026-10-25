@@ -1,6 +1,7 @@
 //! Selection for prepared fallback lines and the plain text of activity cards.
 
 use super::selection::Scope;
+use crate::chat::selection::{Cell, Region};
 use crate::{HerdrWindow, release_notes};
 use gpui::{prelude::*, *};
 use herdr_chat_protocol::EntryId;
@@ -10,13 +11,13 @@ impl HerdrWindow {
         &'a self,
         pane_id: &'a str,
         entry: EntryId,
-        part: usize,
+        region: Region,
     ) -> Option<Scope<'a>> {
         let chat = self.chats.pane(pane_id)?;
         Some(Scope::new(
             pane_id,
             entry,
-            part,
+            region,
             chat.prepared.text(),
             &chat.selection,
             &chat.text_geometry,
@@ -26,14 +27,14 @@ impl HerdrWindow {
     pub(super) fn render_chat_plain_text(
         &self,
         scope: Option<Scope<'_>>,
-        position: (usize, usize, usize),
+        cell: Cell,
         text: impl Into<SharedString>,
         cx: &mut Context<Self>,
     ) -> Div {
         let text = text.into();
         let Some(fragment) = scope.and_then(|scope| {
-            (scope.text(position.0, position.1, position.2) == Some(text.as_ref()))
-                .then(|| scope.fragment(position.0, position.1, position.2))
+            (scope.text(cell) == Some(text.as_ref()))
+                .then(|| scope.fragment(cell))
                 .flatten()
         }) else {
             return div().child(text);
@@ -56,7 +57,9 @@ impl HerdrWindow {
             .gap(px(2.))
             .min_w_0()
             .children(lines.iter().enumerate().map(|(index, line)| {
-                let Some(fragment) = scope.as_ref().and_then(|scope| scope.fragment(0, index, 0))
+                let Some(fragment) = scope
+                    .as_ref()
+                    .and_then(|scope| scope.fragment(Cell::row(index)))
                 else {
                     return release_notes::line(
                         id,

@@ -45,7 +45,13 @@ pub(super) fn caret(
     view.read_with(cx, |view, _| {
         let document = view.chats.pane("w1:p1").unwrap().prepared.text();
         Caret {
-            key: document.key(EntryId(1), 0, block, row, column).unwrap(),
+            key: document
+                .key(
+                    EntryId(1),
+                    crate::chat::selection::Region::Body(0),
+                    crate::chat::selection::Cell { block, row, column },
+                )
+                .unwrap(),
             offset,
         }
     })

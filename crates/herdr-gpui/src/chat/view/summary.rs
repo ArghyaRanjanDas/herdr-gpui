@@ -1,7 +1,10 @@
 //! An agent's compaction summary as one quiet card: its gist folded, its
 //! non-empty sections when opened.
 
-use super::super::summary::Summary;
+use super::super::{
+    selection::{Cell, Region},
+    summary::Summary,
+};
 use crate::{HerdrWindow, config::corners};
 use gpui::{prelude::*, *};
 use herdr_chat_protocol::Entry;
@@ -58,15 +61,15 @@ impl HerdrWindow {
                 if expanded {
                     card.child(self.render_chat_lines(
                         "chat-summary",
-                        self.chat_text_scope(&pane_id, entry.id, 0),
+                        self.chat_text_scope(&pane_id, entry.id, Region::Body(0)),
                         &summary.lines,
                         cx,
                     ))
                 } else {
                     card.child(div().min_w_0().truncate().text_size(small).child(
                         self.render_chat_plain_text(
-                            self.chat_text_scope(&pane_id, entry.id, 0),
-                            (0, 0, 0),
+                            self.chat_text_scope(&pane_id, entry.id, Region::Body(0)),
+                            Cell::default(),
                             summary.gist.clone(),
                             cx,
                         ),

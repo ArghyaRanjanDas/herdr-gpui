@@ -22,7 +22,7 @@ fn imessage_prose_inherits_its_bubble_while_rich_surfaces_keep_theme_ink(cx: &mu
             let selection = Scope::new(
                 "fixture",
                 herdr_chat_protocol::EntryId(0),
-                0,
+                crate::chat::selection::Region::Body(0),
                 &document,
                 &selected,
                 &geometry,

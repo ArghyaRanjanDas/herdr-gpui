@@ -7,6 +7,7 @@ use super::{
         chats::ChatPane,
         prepared::{Body, Part, ToolSummary, tool_label, tool_text},
         rich::{Block, Inline},
+        selection::{Cell, Region},
         visual::Visuals,
     },
     Hues,
@@ -98,8 +99,8 @@ impl HerdrWindow {
                         return self.render_chat_entry_row(chat, index, card);
                     }
                     _ => self.render_chat_plain_text(
-                        self.chat_text_scope(pane_id, entry.id, 0),
-                        (0, 0, 0),
+                        self.chat_text_scope(pane_id, entry.id, Region::Body(0)),
+                        Cell::default(),
                         text.clone(),
                         cx,
                     ),
@@ -117,8 +118,8 @@ impl HerdrWindow {
             }
             EntryKind::Turn(summary) => {
                 let text = self.render_chat_plain_text(
-                    self.chat_text_scope(pane_id, entry.id, 0),
-                    (0, 0, 0),
+                    self.chat_text_scope(pane_id, entry.id, Region::Body(0)),
+                    Cell::default(),
                     summary.describe(),
                     cx,
                 );
@@ -271,8 +272,8 @@ impl HerdrWindow {
                         .when(!expanded, |row| row.truncate())
                         .when(expanded, |row| row.overflow_x_scroll())
                         .child(self.render_chat_plain_text(
-                            self.chat_text_scope(&pane_id, id, 0),
-                            (0, 0, 0),
+                            self.chat_text_scope(&pane_id, id, Region::Body(0)),
+                            Cell::default(),
                             shown,
                             cx,
                         )),
@@ -368,12 +369,8 @@ impl HerdrWindow {
                             .text_size(px(self.config.terminal.size - 1.))
                             .text_color(rgb(theme.subtext()))
                             .child(self.render_chat_plain_text(
-                                self.chat_text_scope(
-                                    pane_id,
-                                    entry,
-                                    crate::chat::selection::LABEL_PART,
-                                ),
-                                (0, 0, 0),
+                                self.chat_text_scope(pane_id, entry, Region::Label),
+                                Cell::default(),
                                 safe_text(tool_label(&tool.title), 300),
                                 cx,
                             )),
@@ -420,15 +417,15 @@ impl HerdrWindow {
                         .text_font(&self.config.terminal)
                         .text_color(rgb(theme.subtext()))
                         .child(self.render_chat_plain_text(
-                            self.chat_text_scope(pane_id, entry, 0),
-                            (0, 0, 0),
+                            self.chat_text_scope(pane_id, entry, Region::ToolTitle),
+                            Cell::default(),
                             tool.title.clone(),
                             cx,
                         ))
                         .children(tool.locations.iter().enumerate().map(|(index, location)| {
                             self.render_chat_plain_text(
-                                self.chat_text_scope(pane_id, entry, 1),
-                                (0, index, 0),
+                                self.chat_text_scope(pane_id, entry, Region::ToolLocations),
+                                Cell::row(index),
                                 location.clone(),
                                 cx,
                             )
@@ -449,8 +446,8 @@ impl HerdrWindow {
                                     .overflow_x_scroll()
                                     .py(px(3.))
                                     .child(self.render_chat_plain_text(
-                                        self.chat_text_scope(pane_id, entry, 2),
-                                        (index, 0, 0),
+                                        self.chat_text_scope(pane_id, entry, Region::ToolContent),
+                                        Cell::block(index),
                                         text,
                                         cx,
                                     ))
@@ -595,8 +592,8 @@ impl HerdrWindow {
             return div()
                 .text_color(rgb(color))
                 .child(self.render_chat_plain_text(
-                    self.chat_text_scope(pane_id, id, 0),
-                    (0, 0, 0),
+                    self.chat_text_scope(pane_id, id, Region::Body(0)),
+                    Cell::default(),
                     text.to_owned(),
                     cx,
                 ));
@@ -647,8 +644,8 @@ impl HerdrWindow {
                             .min_w_0()
                             .truncate()
                             .child(self.render_chat_plain_text(
-                                self.chat_text_scope(&pane_id, id, 0),
-                                (0, 0, 0),
+                                self.chat_text_scope(&pane_id, id, Region::Body(0)),
+                                Cell::default(),
                                 safe_text(text, 240),
                                 cx,
                             )),
@@ -692,12 +689,8 @@ impl HerdrWindow {
                                 // Imported content is inert source text, including
                                 // XML, commands, URLs, and output-file paths.
                                 .child(self.render_chat_plain_text(
-                                    self.chat_text_scope(
-                                        &pane_id,
-                                        id,
-                                        crate::chat::selection::DETAILS_PART,
-                                    ),
-                                    (0, 0, 0),
+                                    self.chat_text_scope(&pane_id, id, Region::Details),
+                                    Cell::default(),
                                     details.to_owned(),
                                     cx,
                                 )),

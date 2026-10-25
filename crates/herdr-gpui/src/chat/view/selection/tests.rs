@@ -65,13 +65,22 @@ fn aligned_backgrounds_retain_inline_code_and_selection_colors() {
     let mut prepared = crate::chat::prepared::Prepared::default();
     prepared.update(&transcript, &[(EntryId(1), 1)]);
     let document = prepared.text();
-    let key = document.key(EntryId(1), 0, 0, 0, 0).unwrap();
+    let key = document
+        .key(EntryId(1), Region::Body(0), Cell::default())
+        .unwrap();
     let mut selection = Selection::default();
     selection.press(document, Caret { key, offset: 5 }, 1, false);
     selection.drag(document, Caret { key, offset: 9 });
     let geometry = Geometry::default();
-    let scope = Scope::new("test", EntryId(1), 0, document, &selection, &geometry);
-    let fragment = scope.fragment(0, 0, 0).unwrap().aligned();
+    let scope = Scope::new(
+        "test",
+        EntryId(1),
+        Region::Body(0),
+        document,
+        &selection,
+        &geometry,
+    );
+    let fragment = scope.fragment(Cell::default()).unwrap().aligned();
     let theme = Theme::default();
     let _text = fragment.styled(
         "code text",
@@ -112,12 +121,12 @@ fn selecting_even_one_byte_blocks_link_activation_until_the_next_plain_click() {
     let scope = Scope::new(
         "test",
         EntryId(1),
-        0,
+        Region::Body(0),
         prepared.text(),
         &selection,
         &geometry,
     );
-    let Some(fragment) = scope.fragment(0, 0, 0) else {
+    let Some(fragment) = scope.fragment(Cell::default()) else {
         panic!("link text missing")
     };
     let caret = Caret {

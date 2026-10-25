@@ -18,6 +18,7 @@ mod code;
 mod links;
 
 use super::selection::{Fragment, Scope};
+use crate::chat::selection::Cell;
 use links::Links;
 
 struct RichContext<'a, 'b, 'c> {
@@ -70,7 +71,7 @@ impl HerdrWindow {
                         .into_any_element(),
                     Block::Math { id, source } => {
                         let formula = self.rich_math(*id, source, visuals, false);
-                        let formula = match selection.fragment(index, 0, 0) {
+                        let formula = match selection.fragment(Cell::block(index)) {
                             Some(fragment) => fragment.atomic(formula, &self.theme, context.cx),
                             None => formula,
                         };
@@ -160,11 +161,19 @@ impl HerdrWindow {
                 .gap(px(8.))
                 .child(div().flex_none().child(marker))
                 .child(
-                    self.rich_inline(content, context.selection.fragment(block, 0, 0), context)
-                        .flex_1(),
+                    self.rich_inline(
+                        content,
+                        context.selection.fragment(Cell::block(block)),
+                        context,
+                    )
+                    .flex_1(),
                 )
         } else {
-            row.child(self.rich_inline(content, context.selection.fragment(block, 0, 0), context))
+            row.child(self.rich_inline(
+                content,
+                context.selection.fragment(Cell::block(block)),
+                context,
+            ))
         }
     }
 
@@ -433,16 +442,17 @@ impl HerdrWindow {
                         row.border_t_1().border_color(rgb(self.theme.active))
                     })
                     .children(row.iter().enumerate().map(|(column, content)| {
-                        let selection =
-                            context
-                                .selection
-                                .fragment(block, row_index, column)
-                                .map(|fragment| match align.get(column) {
-                                    Some(Alignment::Center | Alignment::Right) => {
-                                        fragment.aligned()
-                                    }
-                                    _ => fragment,
-                                });
+                        let selection = context
+                            .selection
+                            .fragment(Cell {
+                                block,
+                                row: row_index,
+                                column,
+                            })
+                            .map(|fragment| match align.get(column) {
+                                Some(Alignment::Center | Alignment::Right) => fragment.aligned(),
+                                _ => fragment,
+                            });
                         div()
                             .id(("cell", row_index * columns + column))
                             .debug_selector(move || format!("chat-table-cell-{row_index}-{column}"))

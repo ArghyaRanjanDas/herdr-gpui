@@ -3,6 +3,7 @@
 
 use super::super::{
     prepared::Part,
+    selection::Region,
     visual::{Shown, VisualId, Visuals},
 };
 use crate::{HerdrWindow, config::corners, release_notes};
@@ -46,17 +47,19 @@ impl HerdrWindow {
                     Part::Text(lines) => self
                         .render_chat_lines(
                             "chat-agent",
-                            self.chat_text_scope(pane_id, entry, index),
+                            self.chat_text_scope(pane_id, entry, Region::Body(index)),
                             lines,
                             cx,
                         )
                         .into_any_element(),
-                    Part::Rich(blocks) => match self.chat_text_scope(pane_id, entry, index) {
-                        Some(scope) => self
-                            .render_chat_rich(pane_id, blocks, visuals, &scope, cx)
-                            .into_any_element(),
-                        None => div().into_any_element(),
-                    },
+                    Part::Rich(blocks) => {
+                        match self.chat_text_scope(pane_id, entry, Region::Body(index)) {
+                            Some(scope) => self
+                                .render_chat_rich(pane_id, blocks, visuals, &scope, cx)
+                                .into_any_element(),
+                            None => div().into_any_element(),
+                        }
+                    }
                     Part::Widget(document) => self
                         .render_chat_widget(pane_id, entry, index, document, cx)
                         .into_any_element(),

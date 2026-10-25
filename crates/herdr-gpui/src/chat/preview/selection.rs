@@ -26,7 +26,11 @@ impl Probe {
             let key = pane
                 .prepared
                 .text()
-                .key(EntryId(1), 0, block, row, column)
+                .key(
+                    EntryId(1),
+                    crate::chat::selection::Region::Body(0),
+                    crate::chat::selection::Cell { block, row, column },
+                )
                 .context("selection preview text segment disappeared")?;
             let point = pane
                 .text_geometry
