@@ -3,12 +3,7 @@ use crate::chat::{
     rich::{Block, Inline, Kind, Style},
     visual::{Shown, VisualId, Visuals},
 };
-use crate::{
-    HerdrWindow,
-    config::{ChatLayoutMode, Theme},
-    fonts::StyledFont,
-    review::highlight::Token,
-};
+use crate::{HerdrWindow, config::ChatLayoutMode, fonts::StyledFont};
 use gpui::{prelude::*, *};
 use pulldown_cmark::{Alignment, HeadingLevel};
 use std::ops::Range;
@@ -518,18 +513,6 @@ fn prose_spans(content: &[Inline]) -> Option<Prose<'_>> {
         }
     }
     Some(Prose { text, spans })
-}
-
-fn token_color(theme: &Theme, token: Token) -> u32 {
-    let color = match token {
-        Token::Comment => theme.muted,
-        Token::String => theme.palette[2],
-        Token::Number | Token::Constant => theme.palette[3],
-        Token::Keyword => theme.palette[5],
-        Token::Type => theme.palette[6],
-        Token::Function => theme.palette[4],
-    };
-    super::text_ink(color, theme.surface)
 }
 
 #[cfg(test)]

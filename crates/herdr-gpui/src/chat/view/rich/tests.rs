@@ -1,4 +1,8 @@
 use super::*;
+use crate::{
+    config::Theme,
+    review::highlight::{Contrast, Token},
+};
 
 mod imessage;
 mod typography;
@@ -19,7 +23,10 @@ fn code_tokens_and_comments_have_text_contrast_on_dark_and_light_surfaces() {
             Token::Function,
         ] {
             assert!(
-                crate::contrast::ratio(token_color(&theme, token), theme.surface) >= 4.5,
+                crate::contrast::ratio(
+                    token.colour(&theme, Contrast::On(theme.surface)),
+                    theme.surface
+                ) >= 4.5,
                 "{name} {token:?}"
             );
         }

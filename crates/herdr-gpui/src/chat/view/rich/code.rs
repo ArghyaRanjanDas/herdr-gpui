@@ -1,9 +1,9 @@
 use super::*;
 use crate::chat::{
-    rich::{CodeText, MAX_CODE_LINES},
+    rich::{CodeText, MAX_CODE_LINE_CHARS, MAX_CODE_LINES},
     selection::{Cell, Segment},
 };
-use crate::review::highlight::Span;
+use crate::review::highlight::{Contrast, Span};
 use std::sync::Arc;
 
 impl HerdrWindow {
@@ -60,7 +60,14 @@ impl HerdrWindow {
                     .border_color(rgb(self.theme.active))
                     .text_size(px(self.chat_text_size() - 2.))
                     .text_color(rgb(self.theme.muted))
-                    .child(if language.is_empty() { "Code" } else { language }.to_owned())
+                    .child(
+                        if language.is_empty() {
+                            "Code"
+                        } else {
+                            language
+                        }
+                        .to_owned(),
+                    )
                     .child(self.rich_copy(copy::CODE, Arc::clone(source), context.cx)),
             )
             .child(
@@ -78,12 +85,24 @@ impl HerdrWindow {
                     .text_font(&self.config.terminal)
                     .children(lines.into_iter().enumerate().map(|(index, line)| {
                         let marks = line.spans.into_iter().map(|span| {
-                            (span.start..span.end, HighlightStyle {
-                                color: Some(rgb(token_color(&self.theme, span.token)).into()),
-                                ..Default::default()
-                            })
+                            (
+                                span.start..span.end,
+                                HighlightStyle {
+                                    color: Some(
+                                        rgb(span
+                                            .token
+                                            .colour(&self.theme, Contrast::On(self.theme.surface)))
+                                        .into(),
+                                    ),
+                                    ..Default::default()
+                                },
+                            )
                         });
-                        let fragment = context.selection.fragment(Cell { block, row: index, column: 0 });
+                        let fragment = context.selection.fragment(Cell {
+                            block,
+                            row: index,
+                            column: 0,
+                        });
                         let styled = match &fragment {
                             Some(fragment) => fragment.styled(line.text, marks, &self.theme),
                             None => StyledText::new(line.text).with_highlights(marks),
@@ -108,10 +127,33 @@ impl HerdrWindow {
                         .px(px(14.))
                         .pb(px(6.))
                         .text_color(rgb(self.theme.muted))
-                        .child("Preview limited to 512 lines and 4,000 characters per line; Copy code includes the full block."),
+                        .child(truncation_note()),
                 )
             })
     }
+}
+
+/// What a cut code block says under its last line, from the limits that
+/// cut it.
+fn truncation_note() -> String {
+    format!(
+        "Preview limited to {} lines and {} characters per line; Copy code includes the full block.",
+        grouped(MAX_CODE_LINES),
+        grouped(MAX_CODE_LINE_CHARS),
+    )
+}
+
+/// `number` with commas between its groups of thousands.
+fn grouped(number: usize) -> String {
+    let digits = number.to_string();
+    let mut text = String::with_capacity(digits.len() + digits.len() / 3);
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index).is_multiple_of(3) {
+            text.push(',');
+        }
+        text.push(digit);
+    }
+    text
 }
 
 struct CodeLine {

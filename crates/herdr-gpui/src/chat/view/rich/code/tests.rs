@@ -1,5 +1,7 @@
 use super::*;
-use crate::chat::rich::{MAX_CODE_LINE_CHARS, TAB_WIDTH};
+use crate::{chat::rich::TAB_WIDTH, review::highlight::Token};
+
+mod truncation;
 
 #[core::prelude::v1::test]
 fn tabs_keep_code_indentation_and_unicode_highlight_offsets() {
