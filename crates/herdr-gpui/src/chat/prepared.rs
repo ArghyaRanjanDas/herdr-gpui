@@ -4,7 +4,10 @@
 //! its picture links as pictures, pictures asked of [`Visuals`], and a tool
 //! call's output and file changes summarized.
 
-use super::visual::{MAX_DIAGRAM_SOURCE, Source, VisualId, Visuals};
+use super::{
+    rich::Fence,
+    visual::{MAX_DIAGRAM_SOURCE, Source, VisualId, Visuals},
+};
 use crate::release_notes::{self, Line};
 use herdr_chat_protocol::{
     EntryId, EntryKind, MAX_QUESTION_ANSWERS, MAX_QUESTION_TEXT, QuestionAnswer, ToolContent,
@@ -395,87 +398,64 @@ fn message(text: &str, author: Author, visuals: &mut Visuals) -> Vec<Part> {
             parts.push(part);
             continue;
         }
-        let marker = trimmed.chars().next().filter(|ch| matches!(ch, '`' | '~'));
-        let count = marker.map_or(0, |marker| {
-            trimmed.chars().take_while(|ch| *ch == marker).count()
-        });
-        let fence = (count >= 3).then(|| trimmed[count..].trim());
-        if marker == Some('`') && fence.is_some_and(|info| info.contains('`')) {
+        let Some(fence) = Fence::open(line) else {
             prose.push_str(line);
             continue;
-        }
-        let kind = match fence {
-            Some(info) if info.eq_ignore_ascii_case("mermaid") && diagrams < DIAGRAMS => {
-                Fence::Diagram
-            }
-            Some(info)
-                if author == Author::Agent
-                    && info.eq_ignore_ascii_case("html")
-                    && pages < PAGES =>
-            {
-                Fence::Page
-            }
-            Some(info)
-                if author == Author::Agent
-                    && info.eq_ignore_ascii_case("herdr-ui")
-                    && widgets < WIDGETS =>
-            {
-                Fence::Widget
-            }
-            Some(_) => Fence::Code,
-            _ => {
-                prose.push_str(line);
-                continue;
-            }
+        };
+        let info = fence.info;
+        let kind = if info.eq_ignore_ascii_case("mermaid") && diagrams < DIAGRAMS {
+            Embed::Diagram
+        } else if author == Author::Agent && info.eq_ignore_ascii_case("html") && pages < PAGES {
+            Embed::Page
+        } else if author == Author::Agent
+            && info.eq_ignore_ascii_case("herdr-ui")
+            && widgets < WIDGETS
+        {
+            Embed::Widget
+        } else {
+            Embed::Code
         };
         let mut source = String::new();
         let mut closed = false;
-        let mut fence = line.to_owned();
+        let mut block = line.to_owned();
         for inner in lines.by_ref() {
-            fence.push_str(inner);
-            let close = inner.trim_end_matches([' ', '\t', '\r', '\n']);
-            let indentation = close.bytes().take_while(|byte| *byte == b' ').count();
-            let close = &close[indentation..];
-            if indentation <= 3
-                && marker.is_some_and(|marker| {
-                    close.len() >= count && close.chars().all(|ch| ch == marker)
-                })
-            {
+            block.push_str(inner);
+            if fence.closes(inner) {
                 closed = true;
                 break;
             }
             source.push_str(inner);
         }
         let limit = match kind {
-            Fence::Diagram => MAX_DIAGRAM_SOURCE,
-            Fence::Page => MAX_PAGE,
-            Fence::Widget => super::widgets::MAX_SOURCE,
-            Fence::Code => MESSAGE.body,
+            Embed::Diagram => MAX_DIAGRAM_SOURCE,
+            Embed::Page => MAX_PAGE,
+            Embed::Widget => super::widgets::MAX_SOURCE,
+            Embed::Code => MESSAGE.body,
         };
         if !closed || source.trim().is_empty() || source.len() > limit {
-            prose.push_str(&fence);
+            prose.push_str(&block);
             continue;
         }
         match kind {
             // Markdown draws code fences itself, in place in the prose.
-            Fence::Code => prose.push_str(&fence),
-            Fence::Widget => match super::widgets::Document::parse(&source) {
+            Embed::Code => prose.push_str(&block),
+            Embed::Widget => match super::widgets::Document::parse(&source) {
                 Ok(document) => {
                     flush(&mut prose, &mut parts, visuals);
                     widgets += 1;
                     parts.push(Part::Widget(Rc::new(document)));
                 }
-                Err(_) => prose.push_str(&fence),
+                Err(_) => prose.push_str(&block),
             },
-            Fence::Diagram => {
+            Embed::Diagram => {
                 flush(&mut prose, &mut parts, visuals);
                 diagrams += 1;
                 let id = VisualId::of(&source);
-                let code = release_notes::parse(&fence).into();
+                let code = release_notes::parse(&block).into();
                 visuals.want(id, Source::Diagram(source.into()));
                 parts.push(Part::Diagram(id, code));
             }
-            Fence::Page => {
+            Embed::Page => {
                 flush(&mut prose, &mut parts, visuals);
                 pages += 1;
                 parts.push(Part::Html {
@@ -503,7 +483,7 @@ fn message(text: &str, author: Author, visuals: &mut Visuals) -> Vec<Part> {
 }
 
 /// What a closed fence becomes.
-enum Fence {
+enum Embed {
     Code,
     Diagram,
     Page,

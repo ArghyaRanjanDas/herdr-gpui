@@ -1,4 +1,4 @@
-use super::{Block, Inline, Kind, Style, formula};
+use super::{Block, Fence, Inline, Kind, Style, formula};
 use crate::chat::visual::{Source, VisualId, Visuals};
 use pulldown_cmark::{Alignment, CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd};
 use std::{collections::HashMap, ops::Range, sync::Arc};
@@ -527,17 +527,11 @@ pub(super) fn normalize_math(text: &str) -> String {
 }
 
 fn closed_fence(source: &str) -> bool {
+    // Inside a container, the block's later lines keep the container's
+    // indentation, so both ends are read without it.
     let mut lines = source.lines();
-    let Some(open) = lines.next().map(str::trim_start) else {
+    let Some(fence) = lines.next().and_then(|open| Fence::open(open.trim_start())) else {
         return false;
     };
-    let Some(marker) = open.chars().next() else {
-        return false;
-    };
-    let count = open.chars().take_while(|ch| *ch == marker).count();
-    count >= 3
-        && lines.last().is_some_and(|close| {
-            let close = close.trim();
-            close.len() >= count && close.chars().all(|ch| ch == marker)
-        })
+    lines.last().is_some_and(|close| fence.closes(close.trim()))
 }

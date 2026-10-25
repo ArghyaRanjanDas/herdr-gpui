@@ -2,6 +2,7 @@
 //! the message limit; math rasterization and grammar parsing use Visuals' workers.
 
 mod code;
+mod fence;
 mod math;
 mod math_input;
 mod parse;
@@ -9,6 +10,7 @@ mod parse;
 #[cfg(test)]
 pub(super) use code::MAX_CODE_LINE_CHARS;
 pub(super) use code::{CodeText, MAX_CODE_LINES, TAB_WIDTH};
+pub(super) use fence::Fence;
 pub(super) use math::draw as draw_math;
 pub(super) use parse::parse;
 
