@@ -433,3 +433,5 @@ fn existing_agent_file_drop_uses_terminal_paste_without_submitting(cx: &mut Test
         assert!(pane.session.resend().is_empty());
     });
 }
+
+mod resize;

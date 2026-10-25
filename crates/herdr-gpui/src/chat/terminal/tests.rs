@@ -14,7 +14,7 @@ const RECT: SurfaceRect = SurfaceRect {
 
 #[core::prelude::v1::test]
 fn compact_input_keeps_eight_original_rows_and_a_divider() {
-    let actual = layout(RECT, false, None, VIEWPORT);
+    let actual = layout(RECT, InputSize::Compact, false, None, VIEWPORT);
     assert_eq!(actual.conversation.height, 31);
     assert_eq!(actual.divider.y, 34);
     assert_eq!(
@@ -33,7 +33,7 @@ fn compact_input_keeps_eight_original_rows_and_a_divider() {
 
 #[core::prelude::v1::test]
 fn expanded_input_exposes_dialogs_without_moving_terminal_coordinates() {
-    let actual = layout(RECT, true, None, VIEWPORT);
+    let actual = layout(RECT, InputSize::Expanded, false, None, VIEWPORT);
     assert_eq!(actual.conversation.height, 2);
     assert_eq!(
         actual.input,
@@ -53,7 +53,7 @@ fn a_multiline_editor_grows_upward_to_keep_its_cursor_visible() {
         visible: true,
         shape: Default::default(),
     };
-    let actual = layout(RECT, false, Some(&cursor), VIEWPORT);
+    let actual = layout(RECT, InputSize::Compact, false, Some(&cursor), VIEWPORT);
     assert_eq!(actual.input.y, 19);
     assert_eq!(actual.input.y + actual.input.height, RECT.y + RECT.height);
     let elsewhere = CursorState {
@@ -61,16 +61,16 @@ fn a_multiline_editor_grows_upward_to_keep_its_cursor_visible() {
         ..cursor.clone()
     };
     assert_eq!(
-        layout(RECT, false, Some(&elsewhere), VIEWPORT),
-        layout(RECT, false, None, VIEWPORT)
+        layout(RECT, InputSize::Compact, false, Some(&elsewhere), VIEWPORT),
+        layout(RECT, InputSize::Compact, false, None, VIEWPORT)
     );
     let hidden = CursorState {
         visible: false,
         ..cursor
     };
     assert_eq!(
-        layout(RECT, false, Some(&hidden), VIEWPORT),
-        layout(RECT, false, None, VIEWPORT)
+        layout(RECT, InputSize::Compact, false, Some(&hidden), VIEWPORT),
+        layout(RECT, InputSize::Compact, false, None, VIEWPORT)
     );
 }
 
@@ -79,7 +79,7 @@ fn tiny_panes_keep_their_complete_original_editor() {
     for height in 0..9 {
         let rect = SurfaceRect { height, ..RECT };
         for expanded in [false, true] {
-            let actual = layout(rect, expanded, None, VIEWPORT);
+            let actual = layout(rect, InputSize::Auto, expanded, None, VIEWPORT);
             assert_eq!(actual.input, rect);
             assert_eq!(actual.conversation.height, 0);
             assert_eq!(actual.divider.height, 0);
@@ -91,7 +91,7 @@ fn tiny_panes_keep_their_complete_original_editor() {
 fn a_larger_daemon_frame_shows_an_affordance_inside_the_actual_viewport() {
     let viewport = ClientSurfaceSize { cols: 60, rows: 30 };
     for expanded in [false, true] {
-        let actual = layout(RECT, expanded, None, viewport);
+        let actual = layout(RECT, InputSize::Auto, expanded, None, viewport);
         assert!(actual.awaiting_fit);
         assert_eq!(
             actual.conversation,
@@ -116,7 +116,9 @@ fn a_larger_daemon_frame_shows_an_affordance_inside_the_actual_viewport() {
         );
         assert_eq!(actual.input.y, viewport.rows);
     }
-    let fitted = layout(RECT, false, None, VIEWPORT);
+    let fitted = layout(RECT, InputSize::Compact, false, None, VIEWPORT);
     assert!(!fitted.awaiting_fit);
     assert_eq!(fitted.input.height, 8);
 }
+
+mod resize;

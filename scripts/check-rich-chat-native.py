@@ -2,7 +2,7 @@
 """Capture the real native chat fixture on a private X server, never the desktop.
 
 Requires a build with `--features integration-test`, Xvfb, and ImageMagick.
-The selection case also uses libX11 and libXtst for isolated native input.
+The selection and input-resize cases use libX11 and libXtst for isolated native input.
 Pass --xvfb and --vulkan-library for project-local test tools. No browser or
 daemon is used. Run under a CPU/memory cap on shared workstations.
 """
@@ -16,7 +16,7 @@ import subprocess
 import tempfile
 import time
 
-from rich_chat_selection import capture_selection
+from rich_chat_native_input import capture_native_input
 
 
 def stop(process):
@@ -68,7 +68,7 @@ def capture(args, case, theme, width, root):
             "HERDR_TEST_RICH_CHAT": case,
             "HERDR_TEST_RICH_CHAT_THEME": theme,
             "HERDR_TEST_RICH_CHAT_SIZE": width,
-            "HERDR_TEST_RICH_CHAT_HOLD_MS": "15000" if case == "selection" else "3000",
+            "HERDR_TEST_RICH_CHAT_HOLD_MS": "15000" if case in ("selection", "input-resize") else "3000",
             "HERDR_CONFIG_PATH": str(sandbox / "daemon.toml"),
             "LP_NUM_THREADS": "2",
             "RAYON_NUM_THREADS": "2",
@@ -112,12 +112,12 @@ def capture(args, case, theme, width, root):
                         if time.monotonic() >= deadline:
                             raise TimeoutError(f"fixture did not settle: {log_path}")
                         time.sleep(0.1)
-                    if case == "selection":
-                        capture_selection(env, directory, app)
+                    if case in ("selection", "input-resize"):
+                        capture_native_input(env, directory, app, case)
                     output = directory / "native.png"
                     subprocess.run(["magick", "import", "-display", env["DISPLAY"], "-window", "root",
                                     str(output)], env=env, check=True, timeout=10)
-                    status = app.wait(timeout=20 if case == "selection" else 10)
+                    status = app.wait(timeout=20 if case in ("selection", "input-resize") else 10)
                     if status or "native fixture PASS" not in log_path.read_text(errors="replace"):
                         raise RuntimeError(f"fixture did not pass: {log_path}")
                     if opener_log.exists():
@@ -137,7 +137,7 @@ def main():
     parser.add_argument("--xvfb", type=Path, default=Path("/usr/bin/Xvfb"))
     parser.add_argument("--vulkan-library", type=Path)
     parser.add_argument("--output", type=Path, default=Path("target/rich-chat-native"))
-    parser.add_argument("--case", choices=["math", "code", "diagram", "activity", "activity-open", "attachments", "questions", "selection", "user", "widgets", "widgets-end", "conversation", "existing", "all"])
+    parser.add_argument("--case", choices=["math", "code", "diagram", "activity", "activity-open", "attachments", "questions", "selection", "input-resize", "user", "widgets", "widgets-end", "conversation", "existing", "all"])
     parser.add_argument("--layout", choices=["timeline", "bubbles", "terminal", "document", "cards", "imessage"])
     parser.add_argument("--theme", choices=["dark", "light"], default="dark")
     parser.add_argument("--size", choices=["wide", "narrow"], default="wide")
@@ -152,6 +152,7 @@ def main():
         ("diagram", "dark", "wide"), ("widgets", "dark", "wide"), ("widgets-end", "light", "narrow"),
         ("conversation", "dark", "wide"), ("conversation", "light", "wide"), ("conversation", "dark", "narrow"),
         ("existing", "dark", "wide"), ("existing", "light", "narrow"),
+        ("input-resize", "dark", "wide"), ("input-resize", "light", "narrow"),
         ("attachments", "dark", "narrow"),
         ("questions", "dark", "wide"), ("questions", "light", "narrow"),
         ("selection", "dark", "narrow"), ("selection", "light", "narrow"),

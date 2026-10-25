@@ -23,6 +23,7 @@ use super::{
 };
 use crate::{HerdrWindow, config::ChatLayoutMode};
 
+mod input_resize;
 mod selection;
 
 const PANE: &str = "rich-chat-preview";
@@ -105,10 +106,11 @@ impl Options {
                 | "widgets-end"
                 | "conversation"
                 | "existing"
+                | "input-resize"
                 | "all"
         ) {
             bail!(
-                "HERDR_TEST_RICH_CHAT expects math, code, diagram, activity, activity-open, attachments, questions, selection, user, widgets, widgets-end, conversation, existing, or all"
+                "HERDR_TEST_RICH_CHAT expects math, code, diagram, activity, activity-open, attachments, questions, selection, user, widgets, widgets-end, conversation, existing, input-resize, or all"
             );
         }
         let hold = std::env::var("HERDR_TEST_RICH_CHAT_HOLD_MS")
@@ -243,6 +245,7 @@ async fn run(handle: WindowHandle<HerdrWindow>, options: Options, cx: &mut Async
     // frozen pre-zoom frame would falsely clip the app after font changes.
     let hold_until = Instant::now() + options.hold;
     let mut selection_probe = selection::Probe::default();
+    let mut resize_probe = input_resize::Probe::default();
     while Instant::now() < hold_until {
         timer.timer(Duration::from_millis(50)).await;
         handle.update(cx, |view, window, cx| {
@@ -250,6 +253,9 @@ async fn run(handle: WindowHandle<HerdrWindow>, options: Options, cx: &mut Async
             view.prepare_chat_visuals(window, cx);
             if options.case == "selection" {
                 selection_probe.observe(view, window, cx);
+            }
+            if options.case == "input-resize" {
+                resize_probe.observe(view, window);
             }
             cx.notify();
         })?;
@@ -317,7 +323,7 @@ fn install(
         "all" => format!("{MATH}\n{CODE}\n{DIAGRAM}\n{widget}"),
         _ => MATH.to_owned(),
     };
-    let existing = options.case == "existing";
+    let existing = matches!(options.case.as_str(), "existing" | "input-resize");
     let mut transcript = Transcript {
         agent: "Codex".into(), status: Status::Idle, read_only: options.read_only || existing,
         entries: vec![

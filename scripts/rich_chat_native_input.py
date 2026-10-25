@@ -1,4 +1,4 @@
-"""Exercise native drag/copy only on the capture script's private Xvfb display."""
+"""Exercise native pointer input only on the capture script's private Xvfb display."""
 
 import ctypes as c
 import hashlib
@@ -8,8 +8,10 @@ from pathlib import Path
 import subprocess
 import time
 
+from rich_chat_resize import capture_resize
 
-def capture_selection(env, directory, app):
+
+def capture_native_input(env, directory, app, case):
     display_name = env["DISPLAY"]
     if not display_name.startswith(":") or not display_name[1:].isdigit():
         raise RuntimeError("Expected the private Xvfb display")
@@ -102,7 +104,29 @@ def capture_selection(env, directory, app):
             test.XTestFakeMotionEvent(display, -1, math.floor(point[0]) + origin_x.value, math.floor(point[1]) + origin_y.value, 0)
             x.XSync(display, False)
 
-        def capture_stable_frame(output):
+        def button(down):
+            nonlocal button_down
+            test.XTestFakeButtonEvent(display, 1, down, 0)
+            button_down = down
+            x.XSync(display, False)
+
+        def drag(start, end):
+            motion(start)
+            button(True)
+            time.sleep(0.08)
+            for step in range(1, 7):
+                motion([start[i] + (end[i] - start[i]) * step / 6 for i in range(2)])
+                time.sleep(0.03)
+            button(False)
+
+        def double_click(point):
+            motion(point)
+            for _ in range(2):
+                button(True)
+                button(False)
+                time.sleep(0.08)
+
+        def capture_stable_frame(output, area=None):
             # Selection state is reported before its repaint. Wait for stable
             # pixels so a screenshot cannot retain an intermediate drag frame.
             deadline = time.monotonic() + 4
@@ -121,7 +145,12 @@ def capture_selection(env, directory, app):
                     raise RuntimeError("Native screenshot did not return RGB pixels")
                 width, height = map(int, dimensions.split())
                 stride = 3 * (2 if int(maximum) > 255 else 1)
-                left, top, right, bottom = viewport
+                left, top, right, bottom = viewport if area is None else (
+                    math.floor(area["x"]) + origin_x.value,
+                    math.floor(area["y"]) + origin_y.value,
+                    math.ceil(area["x"] + area["width"]) + origin_x.value,
+                    math.ceil(area["y"] + area["height"]) + origin_y.value,
+                )
                 if not (0 <= left < right <= width and 0 <= top < bottom <= height):
                     raise RuntimeError("Transcript viewport is outside the native screenshot")
                 region = b"".join(pixels[(row * width + left) * stride:
@@ -139,6 +168,12 @@ def capture_selection(env, directory, app):
                     raise RuntimeError("Selection fixture exited before a stable capture")
                 time.sleep(0.05)
             raise TimeoutError("Native selection screenshot did not stabilize")
+
+        if case == "input-resize":
+            capture_resize(directory, app,
+                           lambda: record("RICH CHAT INPUT SIZE "),
+                           drag, motion, double_click, capture_stable_frame)
+            return
 
         probe = record("RICH CHAT SELECTION PROBE ")
         if probe is None:
@@ -162,17 +197,7 @@ def capture_selection(env, directory, app):
         for name, start, end, expected in cases:
             chord(["Escape"])
             wait_state(None, "selection probe ready")
-            motion(start)
-            test.XTestFakeButtonEvent(display, 1, True, 0)
-            button_down = True
-            x.XSync(display, False)
-            time.sleep(0.08)
-            for step in range(1, 7):
-                motion([start[i] + (end[i] - start[i]) * step / 6 for i in range(2)])
-                time.sleep(0.03)
-            test.XTestFakeButtonEvent(display, 1, False, 0)
-            button_down = False
-            x.XSync(display, False)
+            drag(start, end)
             chord(["Control_L", "c"])
             state = wait_state(expected, expected)
             output = directory / f"selection-{name}.png"

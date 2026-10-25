@@ -113,6 +113,10 @@ text. Blocked questions and approvals automatically expand the original agent
 input. Choose **Compact input** to reclaim the conversation area; the editor
 still grows enough to keep its cursor visible. Automatic sizing returns to
 compact after the answer; an explicit expanded choice stays expanded.
+Drag the horizontal divider above **Agent input · same session** up or down
+to choose its height; double-click the divider to restore automatic sizing.
+The choice belongs to this pane and is bounded when the window shrinks. The
+original editor's cursor remains visible even if it needs more rows than chosen.
 Unusual full-screen dialogs may require the terminal view.
 Leaving the agent returns to the ordinary terminal.
 

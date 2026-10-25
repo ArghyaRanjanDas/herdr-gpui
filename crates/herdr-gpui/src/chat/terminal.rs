@@ -11,6 +11,8 @@ use herdr_client::protocol::{
 
 const COMPACT_ROWS: u16 = 8;
 
+mod resize;
+
 /// Automatic expansion exposes a blocked agent's original question/approval.
 /// Explicit compact mode still grows enough to keep its editing cursor visible.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -19,6 +21,8 @@ pub(crate) enum InputSize {
     Auto,
     Compact,
     Expanded,
+    /// User-chosen height in original terminal rows; bounded by the pane.
+    Rows(u16),
 }
 
 impl InputSize {
@@ -27,7 +31,17 @@ impl InputSize {
             Self::Auto => blocked,
             Self::Compact => false,
             Self::Expanded => true,
+            Self::Rows(rows) => rows > COMPACT_ROWS,
         }
+    }
+
+    fn rows(self, height: u16, blocked: bool) -> u16 {
+        match self {
+            Self::Rows(rows) => rows.clamp(3, height.saturating_sub(3).max(3)),
+            _ if self.expanded(blocked) => height.saturating_sub(3).max(COMPACT_ROWS),
+            _ => COMPACT_ROWS,
+        }
+        .min(height)
     }
 }
 
@@ -44,7 +58,8 @@ pub(crate) struct Layout {
 
 fn layout(
     rect: SurfaceRect,
-    expanded: bool,
+    size: InputSize,
+    blocked: bool,
     cursor: Option<&CursorState>,
     viewport: ClientSurfaceSize,
 ) -> Layout {
@@ -79,12 +94,7 @@ fn layout(
         };
     }
     let bottom = rect.y.saturating_add(rect.height);
-    let rows = if expanded {
-        rect.height.saturating_sub(3).max(COMPACT_ROWS)
-    } else {
-        COMPACT_ROWS
-    };
-    let mut top = bottom.saturating_sub(rows.min(rect.height));
+    let mut top = bottom.saturating_sub(size.rows(rect.height, blocked));
     // Multiline input and menus can move the cursor above the compact strip.
     // Keep the actual caret visible instead of hiding part of the editor.
     if let Some(cursor) = cursor.filter(|cursor| {
@@ -140,7 +150,8 @@ impl HerdrWindow {
         );
         let mut layout = layout(
             pane.inner_rect,
-            chat.terminal_size.expanded(blocked),
+            chat.terminal_size,
+            blocked,
             // A working agent may leave its output cursor near the top. Only
             // its interactive editor/dialog cursor should grow this region.
             surface
@@ -171,7 +182,7 @@ impl HerdrWindow {
         let focus_pane = pane.clone();
         let expanded = chat.terminal_size.expanded(layout.blocked);
         let theme = &self.theme;
-        div()
+        let bar = div()
             .id(SharedString::from(format!("chat-terminal-input-{pane}")))
             .debug_selector(|| "chat-terminal-input".into())
             .absolute()
@@ -241,7 +252,8 @@ impl HerdrWindow {
                         this.focus_existing_chat_input(&pane, window, cx);
                         this.redraw_terminal(cx);
                     })),
-            )
+            );
+        self.resizable_chat_input(bar, chat, layout, cx)
             .into_any_element()
     }
 
