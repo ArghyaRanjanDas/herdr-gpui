@@ -142,6 +142,14 @@ pub(crate) struct Limits {
     pub(crate) line: usize,
 }
 
+impl Limits {
+    /// The start of `text` scanned: at most `body` bytes, cut at a
+    /// character boundary.
+    pub(crate) fn clip(self, text: &str) -> &str {
+        &text[..text.floor_char_boundary(self.body)]
+    }
+}
+
 /// The limits for daemon text: release notes and announcements.
 const DAEMON: Limits = Limits {
     body: MAX_BODY,
@@ -162,14 +170,11 @@ pub(crate) fn note(text: &str) -> Line {
 
 /// [`parse`] within `limits`, and whether part of the body was left out.
 pub(crate) fn parse_within(body: &str, limits: Limits) -> (Vec<Line>, bool) {
-    let mut end = body.len().min(limits.body);
-    while !body.is_char_boundary(end) {
-        end -= 1;
-    }
-    let mut cut = end < body.len() || body[..end].lines().count() > limits.lines;
+    let scanned = limits.clip(body);
+    let mut cut = scanned.len() < body.len() || scanned.lines().count() > limits.lines;
     let mut lines = Vec::new();
     let mut fenced = false;
-    for raw in body[..end].lines().take(limits.lines) {
+    for raw in scanned.lines().take(limits.lines) {
         cut |= raw.chars().count() > limits.line;
         let trimmed = raw.trim_end();
         if trimmed.trim_start().starts_with("```") {

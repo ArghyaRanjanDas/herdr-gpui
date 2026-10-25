@@ -305,8 +305,11 @@ fn project(
             | EntryKind::Agent { text }
             | EntryKind::Thought { text }
             | EntryKind::Notice { text, .. } => {
-                let end = text.floor_char_boundary(text.len().min(MESSAGE.body));
-                builder.plain(Region::Body(0), Cell::default(), text[..end].to_owned());
+                builder.plain(
+                    Region::Body(0),
+                    Cell::default(),
+                    MESSAGE.clip(text).to_owned(),
+                );
             }
             EntryKind::Turn(turn) => {
                 builder.plain(Region::Body(0), Cell::default(), turn.describe())
@@ -320,8 +323,11 @@ fn project(
             ..
         } = &entry.kind
     {
-        let end = details.floor_char_boundary(details.len().min(MESSAGE.body));
-        builder.plain(Region::Details, Cell::default(), details[..end].to_owned());
+        builder.plain(
+            Region::Details,
+            Cell::default(),
+            MESSAGE.clip(details).to_owned(),
+        );
     }
     let positions = builder
         .segments

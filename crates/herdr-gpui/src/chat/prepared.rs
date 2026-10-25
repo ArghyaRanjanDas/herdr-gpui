@@ -34,6 +34,15 @@ pub(super) const MESSAGE: release_notes::Limits = release_notes::Limits {
 /// What ends an answer cut at [`MESSAGE`].
 const CUT: &str = "The rest of this answer is too long to show here; Copy takes all of it.";
 
+/// Markdown prose as rich blocks, or as lines when it is too large to be
+/// rich.
+fn prose(text: &str, visuals: &mut Visuals) -> Part {
+    match super::rich::parse(text, visuals) {
+        Some(blocks) => Part::Rich(blocks.into()),
+        None => Part::Text(message_lines(text)),
+    }
+}
+
 /// An answer's Markdown lines, ending with a note when some are not shown;
 /// Copy still takes the whole answer.
 fn message_lines(text: &str) -> Rc<[Line]> {
@@ -247,10 +256,7 @@ impl Prepared {
                 EntryKind::User { text } => Body::Message(message(text, Author::User, visuals)),
                 EntryKind::Notice { answers, .. } if !answers.is_empty() => {
                     let text: Rc<str> = answers_text(answers).into();
-                    let parts = vec![match super::rich::parse(&text, visuals) {
-                        Some(blocks) => Part::Rich(blocks.into()),
-                        None => Part::Text(message_lines(&text)),
-                    }];
+                    let parts = vec![prose(&text, visuals)];
                     Body::Answers { text, parts }
                 }
                 EntryKind::Agent { text } => {
@@ -349,9 +355,6 @@ pub(super) fn answers_text(answers: &[QuestionAnswer]) -> String {
     source
 }
 
-/// A message as Markdown text with its diagrams, pages, and
-/// pictures between it. Only a closed fence becomes a diagram or a page, so
-/// one still streaming shows as code.
 /// Who wrote a message. A user's own text is shown as Markdown, but only an
 /// agent's reply can become a live card or a page preview: pasting an earlier
 /// reply must not turn the user's bubble into a form that sends prompts.
@@ -361,12 +364,12 @@ enum Author {
     User,
 }
 
+/// A message as Markdown text with its diagrams, pages, and
+/// pictures between it. Only a closed fence becomes a diagram or a page, so
+/// one still streaming shows as code.
 fn message(text: &str, author: Author, visuals: &mut Visuals) -> Vec<Part> {
-    let mut end = text.len().min(MESSAGE.body);
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    end = text[..end]
+    let end = MESSAGE
+        .clip(text)
         .split_inclusive('\n')
         .take(MESSAGE.lines)
         .map(str::len)
@@ -374,15 +377,12 @@ fn message(text: &str, author: Author, visuals: &mut Visuals) -> Vec<Part> {
     let cut = end < text.len();
     let text = &text[..end];
     let mut parts = Vec::new();
-    let mut prose = String::new();
-    let flush = |prose: &mut String, parts: &mut Vec<Part>, visuals: &mut Visuals| {
-        if !prose.trim().is_empty() {
-            parts.push(match super::rich::parse(prose, visuals) {
-                Some(blocks) => Part::Rich(blocks.into()),
-                None => Part::Text(message_lines(prose)),
-            });
+    let mut markdown = String::new();
+    let flush = |text: &mut String, parts: &mut Vec<Part>, visuals: &mut Visuals| {
+        if !text.trim().is_empty() {
+            parts.push(prose(text, visuals));
         }
-        prose.clear();
+        text.clear();
     };
     let mut lines = text.split_inclusive('\n');
     let (mut diagrams, mut pages, mut widgets) = (0, 0, 0);
@@ -390,16 +390,16 @@ fn message(text: &str, author: Author, visuals: &mut Visuals) -> Vec<Part> {
         let trimmed = line.trim_start();
         let indentation = &line[..line.len() - trimmed.len()];
         if indentation.len() > 3 || !indentation.chars().all(|ch| ch == ' ') {
-            prose.push_str(line);
+            markdown.push_str(line);
             continue;
         }
         if let Some(part) = picture(line) {
-            flush(&mut prose, &mut parts, visuals);
+            flush(&mut markdown, &mut parts, visuals);
             parts.push(part);
             continue;
         }
         let Some(fence) = Fence::open(line) else {
-            prose.push_str(line);
+            markdown.push_str(line);
             continue;
         };
         let info = fence.info;
@@ -433,22 +433,22 @@ fn message(text: &str, author: Author, visuals: &mut Visuals) -> Vec<Part> {
             Embed::Code => MESSAGE.body,
         };
         if !closed || source.trim().is_empty() || source.len() > limit {
-            prose.push_str(&block);
+            markdown.push_str(&block);
             continue;
         }
         match kind {
             // Markdown draws code fences itself, in place in the prose.
-            Embed::Code => prose.push_str(&block),
+            Embed::Code => markdown.push_str(&block),
             Embed::Widget => match super::widgets::Document::parse(&source) {
                 Ok(document) => {
-                    flush(&mut prose, &mut parts, visuals);
+                    flush(&mut markdown, &mut parts, visuals);
                     widgets += 1;
                     parts.push(Part::Widget(Rc::new(document)));
                 }
-                Err(_) => prose.push_str(&block),
+                Err(_) => markdown.push_str(&block),
             },
             Embed::Diagram => {
-                flush(&mut prose, &mut parts, visuals);
+                flush(&mut markdown, &mut parts, visuals);
                 diagrams += 1;
                 let id = VisualId::of(&source);
                 let code = release_notes::parse(&block).into();
@@ -456,7 +456,7 @@ fn message(text: &str, author: Author, visuals: &mut Visuals) -> Vec<Part> {
                 parts.push(Part::Diagram(id, code));
             }
             Embed::Page => {
-                flush(&mut prose, &mut parts, visuals);
+                flush(&mut markdown, &mut parts, visuals);
                 pages += 1;
                 parts.push(Part::Html {
                     page: source.into(),
@@ -464,11 +464,8 @@ fn message(text: &str, author: Author, visuals: &mut Visuals) -> Vec<Part> {
             }
         }
     }
-    if !prose.trim().is_empty() || parts.is_empty() {
-        parts.push(match super::rich::parse(&prose, visuals) {
-            Some(blocks) => Part::Rich(blocks.into()),
-            None => Part::Text(message_lines(&prose)),
-        });
+    if !markdown.trim().is_empty() || parts.is_empty() {
+        parts.push(prose(&markdown, visuals));
     }
     if cut {
         if let Some(Part::Text(lines)) = parts.last_mut() {
