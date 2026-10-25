@@ -1,21 +1,23 @@
 //! RaTeX's engine, with resource checks before rasterization. Keeping the
 //! engine's height/depth lets the view align inline formulas with prose.
-use super::super::visual::{Drawn, Error, Result};
+use super::{
+    super::visual::{Drawn, Error, Result},
+    MathMode,
+};
 use ratex_layout::{LayoutOptions, layout, to_display_list, validate_layout};
 use ratex_render::{RenderOptions, render_to_png};
 use ratex_types::{Color, MathStyle};
 use std::sync::Arc;
 
-pub(in crate::chat) fn draw(source: &str, display: bool, size: f32, color: u32) -> Result<Drawn> {
+pub(in crate::chat) fn draw(source: &str, mode: MathMode, size: f32, color: u32) -> Result<Drawn> {
     if !within_limits(source) {
         return Err(Error::MathLimit);
     }
     let nodes = ratex_parser::parse(source).map_err(Error::MathParse)?;
     let options = LayoutOptions {
-        style: if display {
-            MathStyle::Display
-        } else {
-            MathStyle::Text
+        style: match mode {
+            MathMode::Inline => MathStyle::Text,
+            MathMode::Display => MathStyle::Display,
         },
         color: Color::rgb(
             ((color >> 16) & 255) as f32 / 255.,

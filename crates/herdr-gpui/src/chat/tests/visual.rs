@@ -193,7 +193,7 @@ fn forgotten_streamed_work_keeps_its_background_slot(cx: &mut TestAppContext) {
             VisualId::of(source),
             Source::Math {
                 source: source.into(),
-                display: false,
+                mode: rich::MathMode::Inline,
             },
         );
     }
@@ -204,7 +204,7 @@ fn forgotten_streamed_work_keeps_its_background_slot(cx: &mut TestAppContext) {
         VisualId::of("z"),
         Source::Math {
             source: "z".into(),
-            display: false,
+            mode: rich::MathMode::Inline,
         },
     );
     assert!(visuals.jobs(&styled(0xffffff), &renderer).is_empty());
@@ -318,7 +318,7 @@ fn replacing_a_full_rich_transcript_admits_new_math_without_losing_worker_slots(
 
     transcript.entries = vec![agent(1, "$y$")];
     prepared.update(&transcript, &[(EntryId(1), 2)]);
-    let replacement = VisualId::of(("math", false, "y"));
+    let replacement = VisualId::of(("math", rich::MathMode::Inline, "y"));
     assert!(prepared.visuals.wants(replacement));
     assert_eq!(prepared.visuals.rich_budget().0, 1);
     assert!(
@@ -382,7 +382,7 @@ fn rich_cache_admission_and_retained_math_bytes_are_bounded(cx: &mut TestAppCont
             *id,
             Source::Math {
                 source: "x".into(),
-                display: false,
+                mode: rich::MathMode::Inline,
             },
         );
     }
@@ -425,7 +425,7 @@ fn rich_cache_admission_and_retained_math_bytes_are_bounded(cx: &mut TestAppCont
         fresh,
         Source::Math {
             source: "y".into(),
-            display: false,
+            mode: rich::MathMode::Inline,
         },
     );
     assert!(

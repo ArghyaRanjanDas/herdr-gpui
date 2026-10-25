@@ -31,6 +31,13 @@ pub(crate) struct Style {
     pub link: Option<String>,
 }
 
+/// How a formula is typeset: within a line, or set apart as its own display.
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub(crate) enum MathMode {
+    Inline,
+    Display,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) enum Inline {
     Text(String, Style),
@@ -99,7 +106,7 @@ impl Block {
 
 fn formula(
     source: &str,
-    display: bool,
+    mode: MathMode,
     count: &mut usize,
     visuals: &mut Visuals,
 ) -> Option<(VisualId, Arc<str>)> {
@@ -108,12 +115,12 @@ fn formula(
     }
     *count += 1;
     let source: Arc<str> = source.into();
-    let id = VisualId::of(("math", display, &source));
+    let id = VisualId::of(("math", mode, &source));
     visuals.want(
         id,
         Source::Math {
             source: source.clone(),
-            display,
+            mode,
         },
     );
     Some((id, source))

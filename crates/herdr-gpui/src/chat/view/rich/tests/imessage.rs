@@ -80,7 +80,7 @@ fn imessage_prose_inherits_its_bubble_while_rich_surfaces_keep_theme_ink(cx: &mu
                 math,
                 Source::Math {
                     source: "x".into(),
-                    display: false,
+                    mode: crate::chat::rich::MathMode::Inline,
                 },
             );
             // Both source fallbacks and finished transparent textures need

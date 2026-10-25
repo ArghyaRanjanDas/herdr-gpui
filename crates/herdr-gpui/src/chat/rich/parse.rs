@@ -1,4 +1,4 @@
-use super::{Block, Fence, Inline, Kind, Style, formula};
+use super::{Block, Fence, Inline, Kind, MathMode, Style, formula};
 use crate::chat::visual::{Source, VisualId, Visuals};
 use pulldown_cmark::{Alignment, CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd};
 use std::{collections::HashMap, ops::Range, sync::Arc};
@@ -170,7 +170,7 @@ impl<'a> Builder<'a> {
             Event::Start(tag) => self.start(tag, range),
             Event::End(tag) => return self.end(tag),
             Event::InlineMath(source) => {
-                match formula(&source, false, &mut self.maths, self.visuals) {
+                match formula(&source, MathMode::Inline, &mut self.maths, self.visuals) {
                     Some((id, source)) => self.content.push(Inline::Math { id, source }),
                     None => self.text(&format!("${source}$")),
                 }
@@ -385,7 +385,8 @@ impl<'a> Builder<'a> {
     fn display_math(&mut self, source: &str, range: Range<usize>) {
         let display = self.display;
         let source = display.get(&range.start).map_or(source, String::as_str);
-        let Some((id, source)) = formula(source, true, &mut self.maths, self.visuals) else {
+        let Some((id, source)) = formula(source, MathMode::Display, &mut self.maths, self.visuals)
+        else {
             self.text(&format!("$${source}$$"));
             return;
         };

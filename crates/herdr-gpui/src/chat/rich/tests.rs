@@ -116,24 +116,34 @@ fn math_limits_and_errors_preserve_a_readable_source_path() {
     let nested_roots = format!("{}x", r"\sqrt".repeat(65));
     for source in [nested_groups, nested_fractions, nested_roots] {
         assert!(matches!(
-            draw_math(&source, false, 16., 0xffffff),
+            draw_math(&source, MathMode::Inline, 16., 0xffffff),
             Err(Error::MathLimit)
         ));
     }
     assert!(matches!(
-        draw_math(&"x".repeat(MAX_MATH_BYTES + 1), false, 16., 0xffffff),
+        draw_math(
+            &"x".repeat(MAX_MATH_BYTES + 1),
+            MathMode::Inline,
+            16.,
+            0xffffff
+        ),
         Err(Error::MathLimit)
     ));
     assert!(matches!(
-        draw_math(r"\notARealCommand{", false, 16., 0xffffff),
+        draw_math(r"\notARealCommand{", MathMode::Inline, 16., 0xffffff),
         Err(Error::MathParse(_))
     ));
     assert!(matches!(
-        draw_math(r"\rule{100000em}{100000em}", false, 16., 0xffffff),
+        draw_math(
+            r"\rule{100000em}{100000em}",
+            MathMode::Inline,
+            16.,
+            0xffffff
+        ),
         Err(Error::MathLimit) | Err(Error::Math(_))
     ));
-    let inline = draw_math(r"\frac{a}{b}", false, 16., 0xaabbcc).unwrap();
-    let display = draw_math(r"\frac{a}{b}", true, 16., 0xaabbcc).unwrap();
+    let inline = draw_math(r"\frac{a}{b}", MathMode::Inline, 16., 0xaabbcc).unwrap();
+    let display = draw_math(r"\frac{a}{b}", MathMode::Display, 16., 0xaabbcc).unwrap();
     assert!(
         display.height > inline.height,
         "display fractions use display style"

@@ -9,7 +9,7 @@ fn multiline_display_math_precedes_markdown_and_preserves_the_exact_tex_source()
         assert!(
             matches!(&blocks[..], [Block::Paragraph { kind: Kind::Paragraph, .. }, Block::Math { source: actual, .. }, Block::Paragraph { kind: Kind::Paragraph, .. }] if actual.as_ref() == source)
         );
-        assert!(draw_math(source, true, 16., 0xffffff).is_ok());
+        assert!(draw_math(source, MathMode::Display, 16., 0xffffff).is_ok());
     }
 }
 
@@ -24,8 +24,8 @@ fn display_protection_keeps_comments_blank_lines_and_alignment_commands() {
 
 #[test]
 fn equation_zoom_keeps_scaling_above_the_previous_thirty_two_pixel_cap() {
-    let normal = draw_math("x^2", true, 32., 0xffffff).unwrap();
-    let large = draw_math("x^2", true, 50., 0xffffff).unwrap();
+    let normal = draw_math("x^2", MathMode::Display, 32., 0xffffff).unwrap();
+    let large = draw_math("x^2", MathMode::Display, 50., 0xffffff).unwrap();
     assert!(large.width > normal.width * 1.4);
     assert!(large.height > normal.height * 1.4);
 }
@@ -33,8 +33,8 @@ fn equation_zoom_keeps_scaling_above_the_previous_thirty_two_pixel_cap() {
 #[test]
 fn math_lowercase_ink_has_the_optical_height_of_body_text() {
     for size in [20., 40.] {
-        for display in [false, true] {
-            let drawn = draw_math("x", display, size, 0xffffff).unwrap();
+        for mode in [MathMode::Inline, MathMode::Display] {
+            let drawn = draw_math("x", mode, size, 0xffffff).unwrap();
             let pixels = drawn.texture.as_bytes(0).unwrap();
             let row_bytes = (drawn.width * 2.) as usize * 4;
             let ink_height = pixels

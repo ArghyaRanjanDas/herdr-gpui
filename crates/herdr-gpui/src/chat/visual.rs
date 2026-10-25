@@ -8,6 +8,7 @@
 //! streaming does not redraw a diagram it already finished. Diagrams follow
 //! the theme: a theme change redraws them while the old texture stays up.
 
+use super::rich::MathMode;
 use crate::config::{FontConfig, Theme};
 use base64::Engine as _;
 use gpui::{RenderImage, SvgRenderer};
@@ -90,11 +91,23 @@ pub(crate) enum Source {
     },
     Math {
         source: Arc<str>,
-        display: bool,
+        mode: MathMode,
     },
     Diagram(Arc<str>),
     /// A picture on the web, asked for by the user.
     Remote(crate::browser::WebUrl),
+}
+
+impl Source {
+    /// Code and math count against the rich budget; math also against the
+    /// texture budget.
+    fn kind(&self) -> Kind {
+        match self {
+            Self::Code { .. } => Kind::Code,
+            Self::Math { .. } => Kind::Math,
+            Self::Image(_) | Self::Diagram(_) | Self::Remote(_) => Kind::Other,
+        }
+    }
 }
 
 /// A texture and the size it is drawn at, in points.
@@ -114,7 +127,8 @@ pub(crate) enum Output {
 }
 
 impl Output {
-    fn math_bytes(&self) -> usize {
+    /// Bytes of its texture; code has none.
+    fn texture_bytes(&self) -> usize {
         match self {
             Self::Image(drawn) => drawn
                 .texture
@@ -227,7 +241,7 @@ pub(crate) struct Job {
 enum Work {
     Image(Image),
     Code(String, Arc<str>),
-    Math(Arc<str>, bool, Arc<DiagramStyle>),
+    Math(Arc<str>, MathMode, Arc<DiagramStyle>),
     Diagram(Arc<str>, Arc<DiagramStyle>, SvgRenderer),
     Remote(crate::browser::WebUrl),
 }
@@ -240,8 +254,8 @@ impl Job {
             Work::Code(language, source) => {
                 Ok(Output::Code(super::rich::highlight(&language, &source)))
             }
-            Work::Math(source, display, style) => catch_unwind(AssertUnwindSafe(|| {
-                super::rich::draw_math(&source, display, style.size, style.text)
+            Work::Math(source, mode, style) => catch_unwind(AssertUnwindSafe(|| {
+                super::rich::draw_math(&source, mode, style.size, style.text)
             }))
             .unwrap_or(Err(Error::Panicked))
             .map(Output::Image),
@@ -367,11 +381,7 @@ impl Visuals {
         if self.items.contains_key(&id) {
             return;
         }
-        let kind = match &source {
-            Source::Code { .. } => Kind::Code,
-            Source::Math { .. } => Kind::Math,
-            _ => Kind::Other,
-        };
+        let kind = source.kind();
         if kind != Kind::Other {
             if self.rich_count >= MAX_RICH_VISUALS {
                 if self.deferred.len() < MAX_RICH_VISUALS {
@@ -402,7 +412,7 @@ impl Visuals {
                 }
                 if let Some(Ok(drawn)) = item.shown.take() {
                     if item.kind == Kind::Math {
-                        *math_bytes = math_bytes.saturating_sub(drawn.math_bytes());
+                        *math_bytes = math_bytes.saturating_sub(drawn.texture_bytes());
                     }
                     released.extend(drawn.texture());
                 }
@@ -472,9 +482,9 @@ impl Visuals {
                     item.source = Some(Source::Diagram(source));
                     work
                 }
-                Some(Source::Math { source, display }) => {
-                    let work = Work::Math(source.clone(), display, style.clone());
-                    item.source = Some(Source::Math { source, display });
+                Some(Source::Math { source, mode }) => {
+                    let work = Work::Math(source.clone(), mode, style.clone());
+                    item.source = Some(Source::Math { source, mode });
                     work
                 }
                 Some(Source::Code { language, source }) => Work::Code(language, source),
@@ -515,9 +525,9 @@ impl Visuals {
                 .shown
                 .as_ref()
                 .and_then(|shown| shown.as_ref().ok())
-                .map_or(0, Output::math_bytes);
+                .map_or(0, Output::texture_bytes);
             self.math_bytes = self.math_bytes.saturating_sub(old_bytes);
-            let new_bytes = drawn.as_ref().map_or(0, Output::math_bytes);
+            let new_bytes = drawn.as_ref().map_or(0, Output::texture_bytes);
             if new_bytes > MAX_MATH_TEXTURE_BYTES.saturating_sub(self.math_bytes) {
                 if let Ok(output) = drawn {
                     self.released.extend(output.texture());
