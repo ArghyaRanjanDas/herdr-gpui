@@ -111,7 +111,7 @@ fn imessage_prose_inherits_its_bubble_while_rich_surfaces_keep_theme_ink(cx: &mu
                 }
             }
             assert!(crate::contrast::ratio(view.theme.foreground, view.theme.background) >= 4.5);
-            let mut copy = view.rich_copy("Copy answers", source);
+            let mut copy = view.rich_copy(copy::ANSWERS, source, cx);
             assert_eq!(
                 copy.style().background,
                 Some(rgb(view.theme.background).into())

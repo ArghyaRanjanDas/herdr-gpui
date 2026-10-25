@@ -46,7 +46,7 @@ impl HerdrWindow {
                     )),
             )
             .child(message)
-            .child(div().child(self.rich_copy("Copy answers", text.clone())))
+            .child(div().child(self.rich_copy(super::super::copy::ANSWERS, text.clone(), cx)))
             .when(details.is_some(), |card| {
                 card.child(self.render_chat_notice_record(
                     pane_id,

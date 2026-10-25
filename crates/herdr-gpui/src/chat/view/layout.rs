@@ -14,6 +14,7 @@ mod imessage;
 mod terminal;
 mod timeline;
 
+use super::copy::CopyPlacement;
 use crate::{
     HerdrWindow,
     config::{ChatLayoutMode, FontConfig, Theme},
@@ -129,9 +130,28 @@ pub(super) trait ChatLayout {
     fn composer(&self, parts: ComposerParts, look: &Look<'_>) -> Div;
 
     /// Where an agent message's copy button sits: by default in a row
-    /// under the message.
-    fn copy(&self, button: Stateful<Div>, _look: &Look<'_>) -> Div {
+    /// under the message, wherever `placement` allows.
+    fn copy(&self, button: Stateful<Div>, _placement: CopyPlacement, _look: &Look<'_>) -> Div {
         div().h(px(18.)).flex().child(button)
+    }
+
+    /// The color an agent message's prose is drawn in: by default the
+    /// theme's foreground. `None` keeps the color the row gives it.
+    fn prose(&self, look: &Look<'_>) -> Option<u32> {
+        Some(look.theme.foreground)
+    }
+
+    /// The color of a link in a message: by default the theme's blue.
+    /// `None` draws it as the text around it.
+    fn link(&self, look: &Look<'_>) -> Option<u32> {
+        Some(look.theme.ink(look.theme.palette[4]))
+    }
+
+    /// The fill behind what is drawn for the theme's background inside a
+    /// message (a formula's texture, a copy button, a notice) where the
+    /// layout fills messages with another color: by default none.
+    fn backdrop(&self, _look: &Look<'_>) -> Option<u32> {
+        None
     }
 
     /// What shows under the conversation for whether the agent is working

@@ -61,7 +61,7 @@ impl HerdrWindow {
                     .text_size(px(self.chat_text_size() - 2.))
                     .text_color(rgb(self.theme.muted))
                     .child(if language.is_empty() { "Code" } else { language }.to_owned())
-                    .child(self.rich_copy("Copy code", Arc::clone(source))),
+                    .child(self.rich_copy(copy::CODE, Arc::clone(source), context.cx)),
             )
             .child(
                 div()

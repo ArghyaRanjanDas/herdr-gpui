@@ -11,6 +11,7 @@ use super::{
         visual::Visuals,
     },
     Hues,
+    copy::CopyPlacement,
     disclosure::{HeaderText, chevron},
     layout::{Row, layout_for, side},
     visuals::Frame,
@@ -40,11 +41,11 @@ fn tool_kind(kind: ToolKind) -> &'static str {
 
 /// An overlay copy control may cover the last block or an inline control.
 /// Plain prose keeps the layout's compact, floating copy treatment.
-fn copy_needs_footer(body: Option<&Body>) -> bool {
+fn copy_placement(body: Option<&Body>) -> CopyPlacement {
     let Some(Body::Message(parts)) = body else {
-        return false;
+        return CopyPlacement::Floating;
     };
-    parts.iter().any(|part| match part {
+    let covers = parts.iter().any(|part| match part {
         Part::Text(_) => false,
         Part::Rich(blocks) => blocks.iter().any(|block| match block {
             Block::Paragraph { content, .. } => content.iter().any(|inline| match inline {
@@ -55,7 +56,12 @@ fn copy_needs_footer(body: Option<&Body>) -> bool {
             _ => true,
         }),
         _ => true,
-    })
+    });
+    if covers {
+        CopyPlacement::Footer
+    } else {
+        CopyPlacement::Floating
+    }
 }
 
 impl HerdrWindow {
@@ -94,7 +100,12 @@ impl HerdrWindow {
                                 chat.expanded.contains(&entry.id),
                                 cx,
                             ))
-                            .child(self.render_chat_copy(entry.id.0, text, true, cx));
+                            .child(self.render_chat_copy(
+                                entry.id.0,
+                                text,
+                                CopyPlacement::Footer,
+                                cx,
+                            ));
                         return self.render_chat_entry_row(chat, index, card);
                     }
                     _ => self.render_chat_plain_text(
@@ -110,8 +121,7 @@ impl HerdrWindow {
                     .child(self.render_chat_copy(
                         entry.id.0,
                         text,
-                        self.config.chat.layout == crate::config::ChatLayoutMode::IMessage
-                            && copy_needs_footer(body.as_deref()),
+                        copy_placement(body.as_deref()),
                         cx,
                     ))
             }
@@ -172,54 +182,6 @@ impl HerdrWindow {
             content,
         };
         layout_for(self.config.chat.layout).row(row, &self.chat_look())
-    }
-
-    /// A copy button by a message, positioned by the selected layout.
-    fn render_chat_copy(&self, id: u64, text: &str, footer: bool, cx: &mut Context<Self>) -> Div {
-        let theme = &self.theme;
-        let text = text.to_owned();
-        let copy = layout_for(self.config.chat.layout).copy(
-            div()
-                .id(("chat-copy", id))
-                .debug_selector(move || format!("chat-copy-{id}"))
-                .invisible()
-                .group_hover("chat-agent-message", |button| button.visible())
-                .flex()
-                .items_center()
-                .gap(px(4.))
-                .px(px(4.))
-                .rounded(px(corners::SMALL))
-                .cursor_pointer()
-                .text_size(px((self.chat_text_size() - 2.).max(10.)))
-                .text_color(rgb(theme.muted))
-                .hover(|button| button.bg(rgb(theme.active)))
-                .child(
-                    svg()
-                        .path("icons/copy.svg")
-                        .size(px(11.))
-                        .text_color(rgb(theme.muted)),
-                )
-                .child("Copy")
-                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
-                    cx.stop_propagation();
-                    cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
-                    this.show_flash(crate::window::Flash::success("Copied the message"), cx);
-                })),
-            &self.chat_look(),
-        );
-        copy.when(
-            footer && self.config.chat.layout == crate::config::ChatLayoutMode::IMessage,
-            |copy| {
-                // Keep the native pill, but let its actual height reserve a
-                // footer instead of covering the last code/table/visual row.
-                copy.debug_selector(move || format!("chat-copy-footer-{id}"))
-                    .relative()
-                    .flex()
-                    .justify_end()
-                    .pt(px(4.))
-            },
-        )
     }
 
     fn render_chat_thought(
@@ -555,13 +517,9 @@ impl HerdrWindow {
             .min_w_0()
             .gap(px(4.))
             .text_color(rgb(color))
-            .when(
-                self.config.chat.layout == crate::config::ChatLayoutMode::IMessage,
-                |card| {
-                    card.bg(rgb(theme.background))
-                        .rounded(px(corners::SMALL))
-                        .p(px(4.))
-                },
+            .when_some(
+                layout_for(self.config.chat.layout).backdrop(&self.chat_look()),
+                |card, fill| card.bg(rgb(fill)).rounded(px(corners::SMALL)).p(px(4.)),
             )
             .child(self.chat_disclosure(header, pane_id, id, expanded, HeaderText::Label, cx))
             .when(expanded, |card| {
@@ -590,7 +548,7 @@ impl HerdrWindow {
                                     cx,
                                 )),
                         )
-                        .child(self.render_chat_copy(id.0, details, true, cx)),
+                        .child(self.render_chat_copy(id.0, details, CopyPlacement::Footer, cx)),
                 )
             })
     }

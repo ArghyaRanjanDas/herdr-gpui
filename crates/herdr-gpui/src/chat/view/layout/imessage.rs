@@ -6,7 +6,7 @@
 //! works on a turn. The composer is a round field with the attach button
 //! before it and send inside it.
 
-use super::{ChatLayout, ComposerParts, Look, Row, Side, summary_row};
+use super::{ChatLayout, ComposerParts, CopyPlacement, Look, Row, Side, summary_row};
 use crate::config::mix;
 use gpui::{prelude::*, *};
 use herdr_chat_protocol::EntryKind;
@@ -112,15 +112,39 @@ impl ChatLayout for IMessage {
     }
 
     /// Floats over the message's lower corner, inside it, so the pointer
-    /// can reach it without leaving the message.
-    fn copy(&self, button: Stateful<Div>, look: &Look<'_>) -> Div {
-        div().absolute().bottom_0().right_0().child(
-            button
-                .rounded_full()
-                .bg(rgb(look.theme.background))
-                .border_1()
-                .border_color(rgb(look.theme.active)),
-        )
+    /// can reach it without leaving the message. Over what it would cover,
+    /// the same pill takes a footer of its own height instead.
+    fn copy(&self, button: Stateful<Div>, placement: CopyPlacement, look: &Look<'_>) -> Div {
+        let button = button
+            .rounded_full()
+            .bg(rgb(look.theme.background))
+            .border_1()
+            .border_color(rgb(look.theme.active));
+        match placement {
+            CopyPlacement::Floating => div().absolute().bottom_0().right_0().child(button),
+            CopyPlacement::Footer => div()
+                .relative()
+                .flex()
+                .justify_end()
+                .pt(px(4.))
+                .child(button),
+        }
+    }
+
+    /// Prose takes the bubble's own text color.
+    fn prose(&self, _look: &Look<'_>) -> Option<u32> {
+        None
+    }
+
+    /// Links keep the bubble's text color, which reads on its fill.
+    fn link(&self, _look: &Look<'_>) -> Option<u32> {
+        None
+    }
+
+    /// Bubbles are filled, so what the theme's ink is drawn for keeps the
+    /// theme's background behind it.
+    fn backdrop(&self, look: &Look<'_>) -> Option<u32> {
+        Some(look.theme.background)
     }
 
     /// Muted under the last bubble, where Messages shows that the other

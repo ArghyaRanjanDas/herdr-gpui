@@ -5,6 +5,7 @@
 //! is untrusted and only ever drawn as text.
 
 mod composer;
+mod copy;
 mod disclosure;
 mod embeds;
 mod entries;

@@ -16,7 +16,11 @@ use std::ops::Range;
 mod code;
 mod links;
 
-use super::selection::{Fragment, Scope};
+use super::{
+    copy,
+    layout::layout_for,
+    selection::{Fragment, Scope},
+};
 use crate::chat::selection::Cell;
 use links::Links;
 
@@ -37,6 +41,8 @@ impl HerdrWindow {
         cx: &mut Context<Self>,
     ) -> Div {
         let links = Links::new(self, pane_id, cx);
+        let look = self.chat_look();
+        let layout = layout_for(self.config.chat.layout);
         let mut context = RichContext {
             visuals,
             links,
@@ -53,10 +59,7 @@ impl HerdrWindow {
                 |view| view.text_font(&self.config.ui),
             )
             .text_size(px(self.chat_text_size()))
-            .when(
-                self.config.chat.layout != ChatLayoutMode::IMessage,
-                |view| view.text_color(rgb(self.theme.foreground)),
-            )
+            .when_some(layout.prose(&look), |view, ink| view.text_color(rgb(ink)))
             .line_height(relative(1.6))
             .children(blocks.iter().enumerate().map(|(index, block)| {
                 let element = match block {
@@ -78,7 +81,7 @@ impl HerdrWindow {
                             .flex_col()
                             .gap(px(4.))
                             .child(formula)
-                            .child(self.rich_copy("Copy LaTeX", source.clone()))
+                            .child(self.rich_copy(copy::LATEX, source.clone(), context.cx))
                             .into_any_element()
                     }
                     Block::Code {
@@ -94,35 +97,6 @@ impl HerdrWindow {
                 };
                 div().id(("rich-block", index)).min_w_0().child(element)
             }))
-    }
-
-    pub(super) fn rich_copy(
-        &self,
-        label: &'static str,
-        source: impl AsRef<str> + 'static,
-    ) -> Stateful<Div> {
-        div()
-            .id(label)
-            .debug_selector(move || {
-                format!("chat-{}", label.to_ascii_lowercase().replace(' ', "-"))
-            })
-            .cursor_pointer()
-            .text_size(px((self.chat_text_size() - 2.).max(10.)))
-            .text_color(rgb(self.theme.subtext()))
-            .px(px(6.))
-            .py(px(2.))
-            .rounded(px(4.))
-            .when(
-                self.config.chat.layout == ChatLayoutMode::IMessage,
-                |button| button.bg(rgb(self.theme.background)),
-            )
-            .hover(|button| button.bg(rgb(self.theme.active)))
-            .child(label)
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_click(move |_, _, cx| {
-                cx.stop_propagation();
-                cx.write_to_clipboard(ClipboardItem::new_string(source.as_ref().to_owned()));
-            })
     }
 
     fn rich_paragraph(
@@ -311,12 +285,9 @@ impl HerdrWindow {
     fn rich_math(&self, id: VisualId, source: &str, visuals: &Visuals, inline: bool) -> Div {
         // Math textures use the theme's ink. Keep that surface behind them
         // when a layout supplies a different message fill, without re-rasterizing.
-        let ground = |view: Div| {
-            view.when(
-                self.config.chat.layout == ChatLayoutMode::IMessage,
-                |view| view.bg(rgb(self.theme.background)).rounded(px(2.)),
-            )
-        };
+        let backdrop = layout_for(self.config.chat.layout).backdrop(&self.chat_look());
+        let ground =
+            |view: Div| view.when_some(backdrop, |view, fill| view.bg(rgb(fill)).rounded(px(2.)));
         let shown = visuals.shown(id);
         let Shown::Ready(drawn) = shown else {
             let source =
@@ -481,11 +452,12 @@ impl HerdrWindow {
         HighlightStyle {
             font_weight: style.bold.then_some(FontWeight::SEMIBOLD),
             font_style: style.italic.then_some(FontStyle::Italic),
-            color: if style.link.is_some() && self.config.chat.layout != ChatLayoutMode::IMessage {
-                Some(rgb(self.theme.ink(self.theme.palette[4])).into())
-            } else {
-                style.code.then(|| rgb(self.theme.foreground).into())
-            },
+            color: style
+                .link
+                .as_ref()
+                .and_then(|_| layout_for(self.config.chat.layout).link(&self.chat_look()))
+                .or_else(|| style.code.then_some(self.theme.foreground))
+                .map(|color| rgb(color).into()),
             underline: style.link.as_ref().map(|_| UnderlineStyle {
                 thickness: px(1.),
                 ..Default::default()
