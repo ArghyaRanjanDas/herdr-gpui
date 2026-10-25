@@ -145,7 +145,7 @@ and builds without embedded pages return exit 8. See [px0](../crates/herdr-gpui/
 | `ports [list]` | Ports your workspace listens on, and forwards |
 | `ports forward\|unforward PORT` | Forward a port of the SSH host to this machine |
 | `ports open PORT` | `localhost:PORT` in a tab, forwarded first when remote |
-| `usage`, `system` | Plan usage and load of the selected host |
+| `usage`, `system` | Plan usage and load of the selected host: CPU, memory, disk, uptime, and its GPU and video memory when it has one and `show_gpu_load` or `show_sidebar_gpu_load` is on |
 | `security` | Private vulnerability reports in triage (titles and metadata only, never their descriptions) and open Dependabot alerts of the github.com repositories the window's workspaces hold, most severe first, as the Security section last read them. Exits 4 when there are none |
 | `security open REPOSITORY ALERT\|GHSA` | Show alert `ALERT` (its number) or private report `GHSA` (its GHSA ID) of `REPOSITORY` (`owner/name`) in the Security section, beside its list: the fix, the advisory, and the dependency for an alert; the report, its advisory draft, and its conversation for a report. Only items the section lists open; nothing on GitHub changes |
 | `automation approve FILE [--host ID]` | Open the approval of the automation script `FILE` in the app: its plan, caps, and content hash, for the user to approve or cancel. The command approves nothing. `FILE` is the script's path on the host as `herdr-automate status` lists it, resolved here when it exists; `--host` names the host by ID or label (default: your workspace's host). Exits 5 when the host does not list the script, 6 while a dialog is open or the host was not read yet |
@@ -274,6 +274,30 @@ Focus-on-hover between split terminal panes is on by default. Disable it with
 `herdr-gpui config set focus_follows_mouse false`.
 The change applies live; `config get focus_follows_mouse` reads it back.
 
+### Remote control
+
+| Command | What it does |
+| --- | --- |
+| `remote [status]` | Whether remote control is on and its daemon runs: its port, version, the addresses it serves, its certificate authority fingerprint, and paired and connected devices |
+| `remote devices` | The paired devices with their IDs, when each was last seen, and whether it gets notifications. Exits 4 when there are none |
+| `remote pair` | Open the pairing dialog in the window. The QR and its token show only there, and the user approves the phone there |
+| `remote restart` | Restart the daemon from the binary beside the app, as after a rebuild or update; phones reconnect on their own. Exits 6 while the service is already changing |
+| `remote revoke DEVICE` | Ask in the window to revoke a paired device, named by its ID from `remote devices` or its name (a name two devices share is refused); the user confirms there |
+
+Remote control is turned on in Settings > Remote control, or with
+`config set remote.enabled true`; the app then installs the `herdr-remote-control`
+daemon as a user service and keeps it in line with the `[remote]` settings.
+While it is off, `remote status` says so and exits 0; `pair`, `devices`,
+`revoke`, and `restart` exit 1. A dialog already open in the window refuses `pair` and
+`revoke` (exit 6). `--json` gives `{"enabled", "running", "status", "error"}`
+for `status`, where `status` is the daemon's own report, and
+`{"devices": [...]}` for `devices`.
+
+```sh
+herdr-gpui remote status --json
+herdr-gpui remote revoke d_6f1c
+```
+
 ### Events
 
 `events` prints what happened in the app: windows opening, closing, and
@@ -295,9 +319,11 @@ herdr-gpui wait window            # also waits for the app to start
 
 Commands never bypass a confirmation. Restoring a checkpoint, teleporting a
 worktree, fanning out a prompt, running a worktree script the app has not
-seen, creating or destroying cloud machines, and adding a cloud machine open
-the app's own dialog (archiving a worktree has no command at all), already
-pointed at your checkout or the machines named, and the user confirms there.
+seen, creating or destroying cloud machines, adding a cloud machine, pairing
+a phone for remote control, and revoking one open the app's own dialog
+(archiving a worktree and approving a phone have no command at all), already
+pointed at your checkout, the machines, or the device named, and the user
+confirms there.
 `cloud exec` asks nothing because it confirms nothing: it is the agent's own
 work, run on a machine the user saved. Nothing here installs, starts, stops,
 or upgrades Herdr on this computer, and `update` never installs the app;

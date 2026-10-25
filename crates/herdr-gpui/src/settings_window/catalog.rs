@@ -182,6 +182,12 @@ pub(super) const CATALOG: &[Entry] = &[
     ),
     entry(
         Section::Sidebar,
+        "sidebar-gpu-load",
+        "Show GPU and video memory",
+        "Each host's GPU busy share and VRAM on a line under its CPU and memory, or a GPU gauge after its name in compact layouts. Off by default.",
+    ),
+    entry(
+        Section::Sidebar,
         "sidebar-indent",
         "Indent",
         "Pixels each nesting level steps in.",
@@ -238,6 +244,12 @@ pub(super) const CATALOG: &[Entry] = &[
         "status-system-load",
         "CPU and memory",
         "Hiding CPU and memory also removes them from sidebar host rows.",
+    ),
+    entry(
+        Section::StatusBar,
+        "status-gpu",
+        "GPU and video memory",
+        "The selected host's GPU busy share and VRAM, from nvidia-smi, the amdgpu driver, or ioreg on a Mac. Off by default.",
     ),
     entry(
         Section::StatusBar,
@@ -431,6 +443,66 @@ pub(super) const CATALOG: &[Entry] = &[
         "cloud-setup",
         "New device setup",
         "Agents such as Claude Code, Codex, Gemini CLI, or OpenCode, and a setup script, installed when a new cloud device first connects.",
+    ),
+    entry(
+        Section::RemoteControl,
+        "remote-enabled",
+        "Remote control",
+        "Serve your chats to paired phones over HTTPS, as a user service.",
+    ),
+    entry(
+        Section::RemoteControl,
+        "remote-keep-running",
+        "Keep running when Herdr UI quits",
+        "Phones keep working and notifications keep coming after the app quits.",
+    ),
+    entry(
+        Section::RemoteControl,
+        "remote-port",
+        "Port",
+        "The HTTPS port phones connect to.",
+    ),
+    entry(
+        Section::RemoteControl,
+        "remote-bind",
+        "Listen on",
+        "Every interface, or only one network's address.",
+    ),
+    entry(
+        Section::RemoteControl,
+        "remote-addresses",
+        "Addresses",
+        "The addresses phones reach this computer at: the LAN, and Tailscale when it runs.",
+    ),
+    entry(
+        Section::RemoteControl,
+        "remote-certificate",
+        "Certificate",
+        "The daemon's own certificate authority and its fingerprint, or your own files.",
+    ),
+    entry(
+        Section::RemoteControl,
+        "remote-notifications",
+        "Notification text",
+        "Whether phone notifications include a short excerpt of the message.",
+    ),
+    entry(
+        Section::RemoteControl,
+        "remote-idle",
+        "Forget idle devices after",
+        "Days a paired device may stay away before it must pair again.",
+    ),
+    entry(
+        Section::RemoteControl,
+        "remote-pair-card",
+        "Pair a phone",
+        "Show a QR code to scan with a phone, then approve it.",
+    ),
+    entry(
+        Section::RemoteControl,
+        "remote-devices",
+        "Paired devices",
+        "Devices that can control your chats, with when each was last seen. Revoke one here.",
     ),
     entry(
         Section::Configuration,

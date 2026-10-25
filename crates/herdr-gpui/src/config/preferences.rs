@@ -19,6 +19,8 @@ pub(crate) enum Preference {
     RemoveMergedWorktrees(bool),
     ShowSystemLoad(bool),
     ShowNetworkQuality(bool),
+    ShowGpuLoad(bool),
+    ShowSidebarGpuLoad(bool),
     AgentCheckpoints(bool),
     ShowListeningPorts(bool),
     ShowAgentsHeader(bool),
@@ -46,6 +48,8 @@ pub(crate) enum Preference {
     /// `[sound] volume`, in percent.
     SoundVolume(u8),
     StatusBar(status_bar::Edit),
+    /// One `[remote]` key.
+    Remote(remote::Edit),
     /// `[usage] inline`: whether the sidebar draws the daemon's configured rows.
     UsageInline(bool),
     /// `[updates] channel`: whether the updater also offers beta releases.
@@ -136,6 +140,10 @@ impl Config {
                 Preference::ShowSystemLoad(value) => (None, "show_system_load", Some(value.into())),
                 Preference::ShowNetworkQuality(value) => {
                     (None, "show_network_quality", Some(value.into()))
+                }
+                Preference::ShowGpuLoad(value) => (None, "show_gpu_load", Some(value.into())),
+                Preference::ShowSidebarGpuLoad(value) => {
+                    (None, "show_sidebar_gpu_load", Some(value.into()))
                 }
                 Preference::AgentCheckpoints(value) => {
                     (None, "agent_checkpoints", Some(value.into()))
@@ -279,6 +287,10 @@ impl Config {
                 Preference::StatusBar(edit) => {
                     let (key, value) = edit.entry();
                     (Some("status_bar"), key, Some(value))
+                }
+                Preference::Remote(edit) => {
+                    let (key, value) = edit.entry()?;
+                    (Some("remote"), key, Some(value))
                 }
                 Preference::SoundVolume(value) => {
                     if value > SoundConfig::MAX_VOLUME {

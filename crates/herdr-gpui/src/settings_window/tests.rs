@@ -8,6 +8,7 @@ use std::sync::{
 
 mod activity_bar_windows;
 mod config_watch;
+mod gpu_settings;
 #[cfg(windows)]
 mod launch_at_login;
 mod layout_drafts;
@@ -17,6 +18,7 @@ mod navigation_resize;
 mod navigation_scroll;
 mod pages_behaviour;
 mod quit_saves;
+mod remote_control;
 mod remote_history_reload;
 mod save_now;
 mod scrollbars;

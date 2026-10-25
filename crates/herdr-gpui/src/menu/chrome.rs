@@ -482,6 +482,13 @@ impl HerdrWindow {
                 panel.h(px(rail::HEIGHT * (font.size / 12.))
                     .min((viewport.height - px(32.)).max(px(0.))))
             })
+            .when(page == Page::RemoteDevices, |panel| {
+                panel
+                    .w((viewport.width - px(24.))
+                        .max(px(0.))
+                        .min(px(crate::remote::MENU_WIDTH)))
+                    .shadow_lg()
+            })
             .when(page == Page::GitHub, |panel| {
                 panel
                     .w((viewport.width - px(32.)).max(px(0.)).min(px(400.)))
@@ -498,7 +505,8 @@ impl HerdrWindow {
                         | Page::VersionMismatch
                         | Page::OpenCheckout
                         | Page::OpenLink
-                ) || self.cloud_batch_open(),
+                ) || self.cloud_batch_open()
+                    || self.remote_dialog_open(),
                 |panel| {
                     panel
                         .w((viewport.width - px(24.)).max(px(0.)).min(px(420.)))
@@ -596,6 +604,8 @@ impl HerdrWindow {
             panel = panel.child(self.render_remove_wsl(cx));
         } else if page == Page::GitHub {
             panel = panel.child(self.render_github_auth(cx));
+        } else if page == Page::RemoteDevices {
+            panel = panel.child(self.render_remote_menu(cx));
         } else if page == Page::Workspace {
             // The PR card's text width: the panel's inset and border, and the
             // card's own margin, border, and padding.
@@ -670,6 +680,8 @@ impl HerdrWindow {
         } else if let Some(body) = self.cloud_batch_page(cx) {
             panel = panel.child(body);
         } else if let Some(body) = self.automation_dialog_page(cx) {
+            panel = panel.child(body);
+        } else if let Some(body) = self.remote_page(cx) {
             panel = panel.child(body);
         } else if page == Page::OpenCheckout {
             panel = panel.child(self.render_open_checkout(cx));
@@ -809,7 +821,9 @@ impl HerdrWindow {
                     .position(position)
                     // The "…" button sits at a strip's right end, so its menu
                     // hangs leftward from it, as an editor's does.
-                    .when(page == Page::Group, |menu| menu.anchor(Anchor::TopRight))
+                    .when(matches!(page, Page::Group | Page::RemoteDevices), |menu| {
+                        menu.anchor(Anchor::TopRight)
+                    })
                     .snap_to_window_with_margin(Edges::all(px(12.)))
                     .child(panel)
                     .into_any_element()
