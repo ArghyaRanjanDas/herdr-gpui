@@ -211,7 +211,6 @@ impl ChatPane {
         self.link.is_some()
     }
 
-    #[cfg(test)]
     pub(crate) fn generation(&self) -> u64 {
         self.generation
     }
