@@ -1,0 +1,181 @@
+{
+  "scope": "Synthetic native Herdr fixture windows on private Xvfb. No real agent transcript or provider end-to-end streaming claim.",
+  "capture_method": "Direct ImageMagick import -window of the owned fixture window; full-frame QA originals preserved separately.",
+  "sources": [
+    {
+      "binary_source_commit": "b9796152fc998906ec61edf979d42bccf44ed7a6",
+      "binary_source_manifest_sha256": "dfee6e7d73f6abdd76ddb0713e991f9cb3b9ac421b4873d193590bc68807c118",
+      "binary_sha256": "aa69b1ccc17c362b54624e5ff227d2e5c2a798c795408576129e4465e5ec33a1",
+      "driver_hashes": {
+        "scripts/check-rich-chat-native.py": "766c9766f63cbd3fb5d78f49515aea1c40fcc182e003cc638fe6c537eb7b8166",
+        "crates/herdr-gpui/src/chat/preview.rs": "06df6e07c772e59789a57512cd7ad246203a3799cc32c6edfe9163f08431d39e",
+        "crates/herdr-gpui/src/chat/preview/input_resize.rs": "45cdb4402b2b82a52297fa054bfecd43ac4b1f4467d5a28994b8852e0edfceac",
+        "crates/herdr-gpui/src/chat/preview/selection.rs": "6d212c66fa516fa9bf14cb5a532426dc244658bccb23d17d46944b3969ee7d88",
+        "scripts/rich_chat_native_input.py": "fe038947de39ac1b76d28209eb1c741973b0cb97211f997fc8a01d777697444a",
+        "scripts/rich_chat_resize.py": "254e0b9c237fec98a3f89332263542fb3661511092af28a3a7d27ca1b5465758"
+      },
+      "wrapper_sha256": "abf2351d7ab49527b9fc377832c95402da98bbe46c7240b8febadfb1b412f0d0",
+      "publication_capture_sha256": "85f592db0ad044918123c57918c35ee1f6edf96dcfc12b33ec19d11542d65c13",
+      "role": "before"
+    },
+    {
+      "binary_source_commit": "0feeb4a581ddffbd83078e82929e6b97dfbfa72d",
+      "binary_source_manifest_sha256": "51c05ba731689932cbba881a381c0620d77cf35faf49be79ee46e884a20168d2",
+      "binary_sha256": "4dee929378ab6d42186a3aac5ee1b93d9a1e85dc1387828ca17022cdbc20cf91",
+      "driver_hashes": {
+        "scripts/check-rich-chat-native.py": "d3675a1c41442cd94f883b5aa6788f3d470046adbe9357d03cfd5b2e0463754c",
+        "scripts/rich_chat_native_input.py": "4d0a8b7eee05e40e641668de9993cbf03741184ca96facf077f85c1b6f1eb50f",
+        "scripts/rich_chat_resize.py": "254e0b9c237fec98a3f89332263542fb3661511092af28a3a7d27ca1b5465758",
+        "crates/herdr-gpui/src/chat/preview.rs": "3bb49b0b5ce357c64f7d5bb87ab834a892dd9dccfc474e5c55349da85ade0393",
+        "crates/herdr-gpui/src/chat/preview/tools.rs": "f0bd90d79e5927f0ac700acbfb1acd9b4c6fb1d3ee80b23e06007bee8fad3537",
+        "crates/herdr-gpui/src/chat/preview/disclosure.rs": "dcc9dbf830f158cfaec82d8e3e47b6ad5c65c752118b6d23a25575d409e97173",
+        "scripts/rich_chat_disclosure.py": "49c7267fb44171a87805ce554e74a7f62895db46a7848eceaee5413b6cafa911",
+        "crates/herdr-gpui/src/chat/preview/jump.rs": "4ec319737e689825f5d23872479a85f780044d347ded84460f252f0de4a0ee0a",
+        "scripts/rich_chat_jump.py": "b90a59346f0d0c7ac347cb4379d22029935d19c0a52bdc7dd06cf3b47b3802f5",
+        "crates/herdr-gpui/src/chat/view/jump.rs": "70182b7eb9d989bfed344878ac97bacbd55fd159b215770f819cbc9948469793",
+        "assets/icons/arrow-down.svg": "f479f54ec954121315ea28a9fac8e5e62f4e9cd4ef974eddad5d5a1d5da2fb8f",
+        "crates/herdr-gpui/src/icons.rs": "832bc24d183c35c3f686cf25739f78cab5844b3c4463b4187d10c209182ae20e",
+        "crates/herdr-gpui/src/chat/preview/activity.rs": "e285ef0093b8f4b17b42024c4aa7dc43abec58b0741c593551f4034c6ac16e01"
+      },
+      "wrapper_sha256": "fcfd2da3c268c8eae8f217bcca926279a8a63cd8c96c90efdf2c34568252412d",
+      "publication_capture_sha256": "85f592db0ad044918123c57918c35ee1f6edf96dcfc12b33ec19d11542d65c13",
+      "role": "after"
+    },
+    {
+      "binary_source_commit": "0feeb4a581ddffbd83078e82929e6b97dfbfa72d",
+      "binary_source_manifest_sha256": "51c05ba731689932cbba881a381c0620d77cf35faf49be79ee46e884a20168d2",
+      "binary_sha256": "4dee929378ab6d42186a3aac5ee1b93d9a1e85dc1387828ca17022cdbc20cf91",
+      "driver_hashes": {
+        "scripts/check-rich-chat-native.py": "d3675a1c41442cd94f883b5aa6788f3d470046adbe9357d03cfd5b2e0463754c",
+        "scripts/rich_chat_native_input.py": "4d0a8b7eee05e40e641668de9993cbf03741184ca96facf077f85c1b6f1eb50f",
+        "scripts/rich_chat_resize.py": "254e0b9c237fec98a3f89332263542fb3661511092af28a3a7d27ca1b5465758",
+        "crates/herdr-gpui/src/chat/preview.rs": "3bb49b0b5ce357c64f7d5bb87ab834a892dd9dccfc474e5c55349da85ade0393",
+        "crates/herdr-gpui/src/chat/preview/tools.rs": "f0bd90d79e5927f0ac700acbfb1acd9b4c6fb1d3ee80b23e06007bee8fad3537",
+        "crates/herdr-gpui/src/chat/preview/disclosure.rs": "dcc9dbf830f158cfaec82d8e3e47b6ad5c65c752118b6d23a25575d409e97173",
+        "scripts/rich_chat_disclosure.py": "49c7267fb44171a87805ce554e74a7f62895db46a7848eceaee5413b6cafa911",
+        "crates/herdr-gpui/src/chat/preview/jump.rs": "4ec319737e689825f5d23872479a85f780044d347ded84460f252f0de4a0ee0a",
+        "scripts/rich_chat_jump.py": "b90a59346f0d0c7ac347cb4379d22029935d19c0a52bdc7dd06cf3b47b3802f5",
+        "crates/herdr-gpui/src/chat/view/jump.rs": "70182b7eb9d989bfed344878ac97bacbd55fd159b215770f819cbc9948469793",
+        "assets/icons/arrow-down.svg": "f479f54ec954121315ea28a9fac8e5e62f4e9cd4ef974eddad5d5a1d5da2fb8f",
+        "crates/herdr-gpui/src/icons.rs": "832bc24d183c35c3f686cf25739f78cab5844b3c4463b4187d10c209182ae20e",
+        "crates/herdr-gpui/src/chat/preview/activity.rs": "e285ef0093b8f4b17b42024c4aa7dc43abec58b0741c593551f4034c6ac16e01"
+      },
+      "wrapper_sha256": "43c4061abff3d1ad6c2bac35b035ee0fbe80c39dea58d8250df31422ca2d566f",
+      "publication_capture_sha256": "85f592db0ad044918123c57918c35ee1f6edf96dcfc12b33ec19d11542d65c13",
+      "role": "after-loading"
+    }
+  ],
+  "images": [
+    {
+      "file": "before-activity-dark.png",
+      "role": "before",
+      "case": "activity-open",
+      "theme": "dark",
+      "viewport": "narrow",
+      "width": 650,
+      "height": 860,
+      "sha256": "08af8afcd8a33aa3684488581b90ed5519f0c625bde5400735e76543cb75bd38",
+      "caption": "Baseline synthetic notice/prose fixture, dark narrow."
+    },
+    {
+      "file": "before-activity-light.png",
+      "role": "before",
+      "case": "activity-open",
+      "theme": "light",
+      "viewport": "narrow",
+      "width": 650,
+      "height": 860,
+      "sha256": "783434d2fe6d6faf14d7b4e5829a41e987169bb750aebc1fdb354b1a9c8a688d",
+      "caption": "Baseline synthetic notice/prose fixture, light narrow."
+    },
+    {
+      "file": "after-activity-dark.png",
+      "role": "after",
+      "case": "activity-open",
+      "theme": "dark",
+      "viewport": "narrow",
+      "width": 650,
+      "height": 860,
+      "sha256": "0c1790d8b8cb9b4ab20d12a0d16c20dd134da600a6fb277237c6b19823a532cf",
+      "caption": "The same synthetic notice/prose fixture with terminal accents and reader status, dark narrow."
+    },
+    {
+      "file": "after-activity-light.png",
+      "role": "after",
+      "case": "activity-open",
+      "theme": "light",
+      "viewport": "narrow",
+      "width": 650,
+      "height": 860,
+      "sha256": "cd42b3eaad371e07583d8ed270e5ebda125e02bad716f3fe3efcaa6214d232f7",
+      "caption": "The same synthetic notice/prose fixture with terminal accents and reader status, light narrow."
+    },
+    {
+      "file": "diff-expanded-dark.png",
+      "role": "after",
+      "case": "tool-disclosure",
+      "theme": "dark",
+      "viewport": "narrow",
+      "width": 650,
+      "height": 860,
+      "sha256": "998a1ffe797d043b5ecfaffe32894569a1bfb6188f7682b0ea5b85b257f5b5ca",
+      "caption": "Synthetic tool-card showcase: expanded unified diff with syntax, red/green rows and Unicode. Tool statuses are deliberately mixed; this is not a connected provider run."
+    },
+    {
+      "file": "diff-expanded-light.png",
+      "role": "after",
+      "case": "tool-disclosure",
+      "theme": "light",
+      "viewport": "narrow",
+      "width": 650,
+      "height": 860,
+      "sha256": "e4161d1b1fa123e1113f119daa167d922ef2425a400282e8daf6b3f19b2806e3",
+      "caption": "The same expanded synthetic tool-card diff in the light theme."
+    },
+    {
+      "file": "disclosure-collapsed-dark.png",
+      "role": "after",
+      "case": "tool-disclosure",
+      "theme": "dark",
+      "viewport": "narrow",
+      "width": 650,
+      "height": 860,
+      "sha256": "314cb0a234a7c442ef5cf507eed1c320eecc26f4950e0694c901c0b06cc51627",
+      "caption": "The synthetic tool cards after a real disclosure click hides source panels and copy controls."
+    },
+    {
+      "file": "jump-to-latest-dark.png",
+      "role": "after",
+      "case": "tools-open",
+      "theme": "dark",
+      "viewport": "narrow",
+      "width": 650,
+      "height": 860,
+      "sha256": "0b3c3bfd9a0c65980f30b89cbbfdb256a07d93a5af822f943c2d7400976e416b",
+      "caption": "The measured Jump to latest button in a scrolled synthetic transcript; native checks also click it and verify return to the tail."
+    },
+    {
+      "file": "reported-activity-dark.png",
+      "role": "after",
+      "case": "live-working",
+      "theme": "dark",
+      "viewport": "narrow",
+      "width": 650,
+      "height": 860,
+      "sha256": "3f107ef429f70d710c515f7408a12efbf70032d7f1c1295152cb44080e3a7227",
+      "caption": "Synthetic reported Running activity with elapsed time and explicitly supplied token metrics. Static image; streaming behavior is covered separately by protocol tests."
+    },
+    {
+      "file": "loading-input-light-wide.png",
+      "role": "after-loading",
+      "case": "loading",
+      "theme": "light",
+      "viewport": "wide",
+      "width": 1280,
+      "height": 860,
+      "sha256": "60846cc93766c8604e3c8f4cb56681ee35e85cc7d4168cf2c16833370ddba264",
+      "caption": "Loading shell with the original input available below. Synthetic fixed terminal grid, wide viewport."
+    }
+  ],
+  "selection_note": "Compact review gallery. Complete native input checks and unselected captures are retained in private QA evidence; no test log or machine path is published."
+}
