@@ -27,7 +27,7 @@ impl HerdrWindow {
             return div().child("Preparing answers…");
         };
         let message =
-            self.render_chat_message(pane_id, entry.id, parts, &chat.prepared.visuals, cx);
+            self.render_chat_message(pane_id, entry.id, parts, &chat.prepared.visuals, true, cx);
         let id = entry.id.0;
         div()
             .debug_selector(move || format!("chat-answers-{id}"))

@@ -4,6 +4,7 @@ use crate::{
     review::highlight::{Contrast, Token},
 };
 
+mod accents;
 mod imessage;
 mod typography;
 

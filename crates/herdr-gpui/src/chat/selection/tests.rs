@@ -316,6 +316,7 @@ fn code_projection_obeys_preview_bounds_without_copying_full_source() {
             1,
             Rc::new(Body::Message(vec![Part::Rich(
                 vec![Block::Code {
+                    highlight: false,
                     id: VisualId::of(&source),
                     language: String::new(),
                     source,
@@ -360,7 +361,7 @@ fn folded_thoughts_and_tools_never_leak_hidden_text_across_messages() {
                 status: ToolStatus::Completed,
                 locations: vec!["src/test.rs".into()],
                 content: vec![ToolContent::Text {
-                    text: "hidden tool source".into(),
+                    text: "visible line 1\nvisible line 2\nvisible line 3\nvisible line 4\nhidden tool source".into(),
                 }],
             }),
         },
@@ -370,7 +371,7 @@ fn folded_thoughts_and_tools_never_leak_hidden_text_across_messages() {
     selection.select_all(prepared.text());
     assert_eq!(
         selection.text(prepared.text()).as_deref(),
-        Some("before\n\nvisible thought\n\nRead file\n\nafter")
+        Some("before\n\nvisible thought\n\nRead file\nsrc/test.rs\n\nafter")
     );
     prepared.set_expanded(&std::collections::HashSet::from([EntryId(2), EntryId(3)]));
     prepared.update(&transcript, &keys);
@@ -378,7 +379,8 @@ fn folded_thoughts_and_tools_never_leak_hidden_text_across_messages() {
     selection.select_all(prepared.text());
     let text = selection.text(prepared.text()).unwrap();
     assert!(text.contains("visible thought\nhidden thought"));
-    assert!(text.contains("Read file\nRead file\nsrc/test.rs\nhidden tool source"));
+    assert!(text.contains("Read file\nRead file\nsrc/test.rs\nOutput / source"));
+    assert!(text.contains("visible line 4\nhidden tool source"));
 }
 
 #[test]
@@ -465,3 +467,5 @@ fn empty_code_ranges_with_removed_controls_do_not_copy_or_panic() {
     selection.drag(document, code);
     assert_eq!(selection.text(document).as_deref(), Some("before\n\n"));
 }
+
+mod tools;

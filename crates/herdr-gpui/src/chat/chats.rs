@@ -208,6 +208,16 @@ impl ChatPane {
         self.session.synced() && !self.permanent && self.failures < MAX_FAILURES
     }
 
+    /// Visual loading only: input continues to belong to the original pane
+    /// until a first snapshot makes `available` true.
+    pub(crate) fn loading(&self) -> bool {
+        // Program lookup has no link yet, but also no failed attempt/backoff.
+        let connected = self.link.is_some() || (self.generation > 0 && self.retry_at.is_none());
+        #[cfg(feature = "integration-test")]
+        let connected = connected || self.preview;
+        !self.session.synced() && connected && !self.permanent && self.failures == 0
+    }
+
     pub(crate) fn attached(&self) -> bool {
         #[cfg(feature = "integration-test")]
         if self.preview {
@@ -246,6 +256,9 @@ impl ChatPane {
         let resend = self.session.resend();
         match connect(&self.target, self.session.since(), resend) {
             Ok(link) => self.link = Some((self.generation, link)),
+            // The one existing lookup worker has not returned. Reconsider
+            // next poll; this is not an observer/transport failure.
+            Err(Error::Start(super::StartError::ProgramUnknown)) => {}
             Err(error) => self.fail(&error, now),
         }
     }
@@ -402,6 +415,8 @@ pub(crate) enum Toward {
 /// Every chat pane of the window's daemon, in its snapshot's order.
 #[derive(Default)]
 pub(crate) struct Chats {
+    /// Includes workers whose original pane has since been hidden or removed.
+    pub(crate) active_visual_jobs: usize,
     /// The agents installed on each host new chats may start on.
     pub(crate) agents: super::harnesses::Harnesses,
     /// Exact CLI sessions already running in this connected daemon's panes.
@@ -433,10 +448,12 @@ pub(crate) struct Chats {
     raw: HashSet<EndpointId>,
     /// Textures of panes no longer attached, for the window to drop.
     released: Vec<std::sync::Arc<gpui::RenderImage>>,
-    /// The second a running turn's timer last redrew at.
-    pub(crate) ticked: u64,
     /// A new chat whose tab is being made.
     pub(crate) starting: Option<super::start::Starting>,
+    /// The second a running turn's timer last redrew at.
+    pub(crate) ticked: u64,
+    /// Next visible pane offered a worker slot, so busy splits take turns.
+    pub(crate) visual_cursor: usize,
 }
 
 impl Chats {
@@ -558,10 +575,16 @@ impl Chats {
             .collect();
         self.raw.retain(|endpoint| endpoints.contains(endpoint));
         for pane in &mut self.panes {
+            if pane.target.existing.is_some() && self.existing.take_dismissed(&pane.target.pane_id)
+            {
+                self.raw.insert(pane.target.endpoint.clone());
+            }
             let due =
                 pane.link.is_none() && !pane.permanent && pane.retry_at.is_none_or(|at| at <= now);
             if due {
+                let loading = pane.loading();
                 pane.start(now, connect);
+                changed |= loading != pane.loading();
             }
         }
         changed

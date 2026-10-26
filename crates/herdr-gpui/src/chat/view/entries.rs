@@ -5,7 +5,7 @@
 use super::{
     super::{
         chats::ChatPane,
-        prepared::{Body, Part, ToolSummary, folded_thought, notice_label, tool_header, tool_text},
+        prepared::{Body, Part, ToolSummary, folded_thought, notice_label},
         rich::{Block, Inline},
         selection::{Cell, Region},
         visual::Visuals,
@@ -14,16 +14,14 @@ use super::{
     copy::CopyPlacement,
     disclosure::{HeaderText, chevron},
     layout::{Row, layout_for, side},
-    visuals::Frame,
 };
 use crate::{HerdrWindow, config::corners, fonts::StyledFont, notifications::safe_text};
 use gpui::{prelude::*, *};
 use herdr_chat_protocol::{Entry, EntryKind, NoticeLevel, Tool, ToolKind, ToolStatus};
 
 mod questions;
+mod tools;
 
-/// Locations listed under a folded tool call.
-const LOCATIONS: usize = 3;
 fn tool_kind(kind: ToolKind) -> &'static str {
     match kind {
         ToolKind::Read => "Read",
@@ -78,6 +76,8 @@ impl HerdrWindow {
         let Some(entry) = entries.get(index) else {
             return div().into_any_element();
         };
+        chat.prepared
+            .request_visible(entry.id, chat.expanded.contains(&entry.id));
         let body = chat.prepared.body(entry.id);
         let content = match &entry.kind {
             EntryKind::User { text } | EntryKind::Agent { text } => {
@@ -87,6 +87,7 @@ impl HerdrWindow {
                         entry.id,
                         parts,
                         &chat.prepared.visuals,
+                        matches!(entry.kind, EntryKind::User { .. }),
                         cx,
                     ),
                     Some(Body::Summary(summary)) => {
@@ -221,229 +222,6 @@ impl HerdrWindow {
                     )),
             );
         div().child(self.chat_disclosure(header, pane_id, id, expanded, HeaderText::Body, cx))
-    }
-
-    fn render_chat_tool(
-        &self,
-        pane_id: &str,
-        entry: herdr_chat_protocol::EntryId,
-        tool: &Tool,
-        body: Option<&Body>,
-        visuals: &Visuals,
-        cx: &mut Context<Self>,
-    ) -> Div {
-        let theme = &self.theme;
-        let hues = Hues::of(theme);
-        let (status, color) = match tool.status {
-            ToolStatus::Pending => ("pending", theme.muted),
-            ToolStatus::InProgress => ("running", hues.yellow),
-            ToolStatus::Completed => ("done", hues.green),
-            ToolStatus::Failed => ("failed", hues.red),
-        };
-        let small = px((self.chat_text_size() - 1.).max(10.));
-        let summary = match body {
-            Some(Body::Tool(summary)) => Some(summary),
-            _ => None,
-        };
-        let expanded = self
-            .chats
-            .pane(pane_id)
-            .is_some_and(|chat| chat.expanded.contains(&entry));
-        // The gutter's dot carries the state's color; the row stays plain.
-        let header = div()
-            .id(("chat-tool", entry.0))
-            .debug_selector(move || format!("chat-tool-{}", entry.0))
-            .flex()
-            .items_center()
-            .gap(px(6.))
-            .child(chevron(expanded, theme))
-            .child(
-                div()
-                    .flex_none()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(rgb(hues.blue))
-                    .child(tool_kind(tool.kind)),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .truncate()
-                    .text_font(&self.config.terminal)
-                    .text_size(px(self.config.terminal.size - 1.))
-                    .text_color(rgb(theme.subtext()))
-                    .child(self.render_chat_plain_text(
-                        self.chat_text_scope(pane_id, entry, Region::Label),
-                        Cell::default(),
-                        tool_header(&tool.title),
-                        cx,
-                    )),
-            )
-            .child(
-                div()
-                    .flex_none()
-                    .text_size(small)
-                    .text_color(rgb(color))
-                    .child(status),
-            );
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(2.))
-            .child(self.chat_disclosure(header, pane_id, entry, expanded, HeaderText::Label, cx))
-            .children(
-                page_written(tool).map(|path| self.render_chat_file_page(pane_id, entry, path, cx)),
-            )
-            .children(self.render_chat_tool_glance(entry, tool, summary, expanded, visuals))
-            .when(expanded, |card| {
-                card.child(
-                    div()
-                        .id(("chat-tool-details", entry.0))
-                        .debug_selector(move || format!("chat-tool-details-{}", entry.0))
-                        .min_w_0()
-                        .w_full()
-                        .overflow_x_scroll()
-                        .text_size(small)
-                        .text_font(&self.config.terminal)
-                        .text_color(rgb(theme.subtext()))
-                        .child(self.render_chat_plain_text(
-                            self.chat_text_scope(pane_id, entry, Region::ToolTitle),
-                            Cell::default(),
-                            tool.title.clone(),
-                            cx,
-                        ))
-                        .children(tool.locations.iter().enumerate().map(|(index, location)| {
-                            self.render_chat_plain_text(
-                                self.chat_text_scope(pane_id, entry, Region::ToolLocations),
-                                Cell::row(index),
-                                location.clone(),
-                                cx,
-                            )
-                        }))
-                        .children(tool.content.iter().enumerate().filter_map(|(index, item)| {
-                            tool_text(item).map(|text| {
-                                // Keep the full retained output; long unbroken lines
-                                // scroll horizontally instead of disappearing.
-                                div()
-                                    .id(SharedString::from(format!(
-                                        "chat-tool-content-{}-{index}",
-                                        entry.0
-                                    )))
-                                    .debug_selector(move || {
-                                        format!("chat-tool-content-{}-{index}", entry.0)
-                                    })
-                                    .w_full()
-                                    .overflow_x_scroll()
-                                    .py(px(3.))
-                                    .child(self.render_chat_plain_text(
-                                        self.chat_text_scope(pane_id, entry, Region::ToolContent),
-                                        Cell::block(index),
-                                        text,
-                                        cx,
-                                    ))
-                            })
-                        })),
-                )
-            })
-    }
-
-    /// What a tool call shows without being opened: each file's changed line
-    /// counts and its pictures always, and while folded, its first locations
-    /// and output lines. Opening it shows the full text in their place.
-    fn render_chat_tool_glance(
-        &self,
-        entry: herdr_chat_protocol::EntryId,
-        tool: &Tool,
-        summary: Option<&ToolSummary>,
-        expanded: bool,
-        visuals: &Visuals,
-    ) -> Vec<AnyElement> {
-        let theme = &self.theme;
-        let hues = Hues::of(theme);
-        let small = px((self.chat_text_size() - 1.).max(10.));
-        let note = |text: String| {
-            div()
-                .text_size(small)
-                .text_color(rgb(theme.muted))
-                .child(text)
-                .into_any_element()
-        };
-        let mut glance = Vec::new();
-        let Some(summary) = summary else {
-            return glance;
-        };
-        glance.extend(summary.diffs.iter().enumerate().map(|(index, diff)| {
-            div()
-                .debug_selector(move || format!("chat-tool-diff-{}-{index}", entry.0))
-                .flex()
-                .gap(px(6.))
-                .text_size(small)
-                .child(div().min_w_0().truncate().child(safe_text(&diff.path, 300)))
-                .child(
-                    div()
-                        .flex_none()
-                        .text_color(rgb(hues.green))
-                        .child(format!("+{}", diff.added)),
-                )
-                .child(
-                    div()
-                        .flex_none()
-                        .text_color(rgb(hues.red))
-                        .child(format!("\u{2212}{}", diff.removed)),
-                )
-                .into_any_element()
-        }));
-        if !summary.images.is_empty() {
-            glance.push(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .gap(px(6.))
-                    .py(px(2.))
-                    .children(
-                        summary
-                            .images
-                            .iter()
-                            .map(|id| self.render_chat_visual(*id, visuals, Frame::ToolImage)),
-                    )
-                    .into_any_element(),
-            );
-        }
-        if expanded {
-            return glance;
-        }
-        glance.extend(tool.locations.iter().take(LOCATIONS).map(|location| {
-            div()
-                .text_size(small)
-                .text_color(rgb(theme.subtext()))
-                .truncate()
-                .child(safe_text(location, 300))
-                .into_any_element()
-        }));
-        let more_locations = tool.locations.len().saturating_sub(LOCATIONS);
-        if more_locations > 0 {
-            glance.push(note(format!("and {more_locations} more")));
-        }
-        glance.extend(summary.lines.iter().map(|line| {
-            div()
-                .debug_selector(move || format!("chat-tool-preview-{}", entry.0))
-                .text_size(small)
-                .text_font(&self.config.terminal)
-                .text_color(rgb(theme.subtext()))
-                .whitespace_nowrap()
-                .overflow_hidden()
-                .child(line.clone())
-                .into_any_element()
-        }));
-        if summary.more > 0 {
-            glance.push(note(format!("{} more lines", summary.more)));
-        }
-        if summary.terminals > 0 {
-            glance.push(note(
-                "Terminal output shows in the program's own view".to_owned(),
-            ));
-        }
-        glance
     }
 
     fn render_chat_notice(&self, pane_id: &str, entry: &Entry, cx: &mut Context<Self>) -> Div {

@@ -143,7 +143,7 @@ pub(super) trait ChatLayout {
 
     /// The color of a link in a message: by default the theme's blue.
     /// `None` draws it as the text around it.
-    fn link(&self, look: &Look<'_>) -> Option<u32> {
+    fn link(&self, look: &Look<'_>, _inherit_ink: bool) -> Option<u32> {
         Some(look.theme.ink(look.theme.palette[4]))
     }
 
@@ -151,14 +151,6 @@ pub(super) trait ChatLayout {
     /// message (a formula's texture, a copy button, a notice) where the
     /// layout fills messages with another color: by default none.
     fn backdrop(&self, _look: &Look<'_>) -> Option<u32> {
-        None
-    }
-
-    /// What shows under the conversation for whether the agent is working
-    /// on a turn: by default nothing, as the header already says so. A row
-    /// it draws keeps its height either way, so the list above it does not
-    /// change size as turns start and end.
-    fn working(&self, _working: bool, _look: &Look<'_>) -> Option<Div> {
         None
     }
 

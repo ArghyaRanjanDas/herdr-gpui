@@ -23,8 +23,12 @@ use super::{
 };
 use crate::{HerdrWindow, config::ChatLayoutMode};
 
+mod activity;
+pub(crate) mod disclosure;
 mod input_resize;
+pub(crate) mod jump;
 mod selection;
+mod tools;
 
 const PANE: &str = "rich-chat-preview";
 const WAIT: Duration = Duration::from_secs(20);
@@ -98,6 +102,16 @@ impl Options {
                 | "diagram"
                 | "activity"
                 | "activity-open"
+                | "live-working"
+                | "live-thinking"
+                | "live-waiting"
+                | "live-completed"
+                | "live-failed"
+                | "live-idle"
+                | "live-reconnecting"
+                | "tools"
+                | "tools-open"
+                | "tool-disclosure"
                 | "attachments"
                 | "questions"
                 | "selection"
@@ -106,11 +120,12 @@ impl Options {
                 | "widgets-end"
                 | "conversation"
                 | "existing"
+                | "loading"
                 | "input-resize"
                 | "all"
         ) {
             bail!(
-                "HERDR_TEST_RICH_CHAT expects math, code, diagram, activity, activity-open, attachments, questions, selection, user, widgets, widgets-end, conversation, existing, input-resize, or all"
+                "HERDR_TEST_RICH_CHAT expects math, code, diagram, activity, activity-open, live-working, live-thinking, live-waiting, live-completed, live-failed, live-idle, live-reconnecting, tools, tools-open, tool-disclosure, attachments, questions, selection, user, widgets, widgets-end, conversation, existing, loading, input-resize, or all"
             );
         }
         let hold = std::env::var("HERDR_TEST_RICH_CHAT_HOLD_MS")
@@ -246,8 +261,15 @@ async fn run(handle: WindowHandle<HerdrWindow>, options: Options, cx: &mut Async
     let hold_until = Instant::now() + options.hold;
     let mut selection_probe = selection::Probe::default();
     let mut resize_probe = input_resize::Probe::default();
+    let mut disclosure_probe = disclosure::Probe::default();
+    let mut jump_probe = jump::Probe::default();
     while Instant::now() < hold_until {
         timer.timer(Duration::from_millis(50)).await;
+        // Live-state captures must prove the production animation scheduler,
+        // not acquire movement from the fixture's synthetic redraw loop.
+        if options.case.starts_with("live-") {
+            continue;
+        }
         handle.update(cx, |view, window, cx| {
             fit_surface(view);
             view.prepare_chat_visuals(window, cx);
@@ -256,6 +278,12 @@ async fn run(handle: WindowHandle<HerdrWindow>, options: Options, cx: &mut Async
             }
             if options.case == "input-resize" {
                 resize_probe.observe(view, window);
+            }
+            if options.case == "tool-disclosure" {
+                disclosure_probe.observe(view);
+            }
+            if options.case == "tools-open" {
+                jump_probe.observe(view);
             }
             cx.notify();
         })?;
@@ -323,7 +351,10 @@ fn install(
         "all" => format!("{MATH}\n{CODE}\n{DIAGRAM}\n{widget}"),
         _ => MATH.to_owned(),
     };
-    let existing = matches!(options.case.as_str(), "existing" | "input-resize");
+    let existing = matches!(
+        options.case.as_str(),
+        "existing" | "input-resize" | "live-waiting" | "loading"
+    );
     let mut transcript = Transcript {
         agent: "Codex".into(), status: Status::Idle, read_only: options.read_only || existing,
         entries: vec![
@@ -359,6 +390,18 @@ fn install(
             kind: EntryKind::User { text: USER.into() },
         }];
     }
+    if options.case.starts_with("live-") {
+        let status = activity::install(&options.case, &mut transcript);
+        if let Some(snapshot) = view.live.snapshot.as_mut() {
+            Arc::make_mut(snapshot).agents[0].agent_status = status;
+        }
+    }
+    if matches!(
+        options.case.as_str(),
+        "tools" | "tools-open" | "tool-disclosure"
+    ) {
+        transcript.entries = tools::entries();
+    }
     view.chats.preview(
         Target {
             existing: existing.then(|| super::existing::Binding {
@@ -376,6 +419,13 @@ fn install(
         },
         transcript,
     )?;
+    if options.case == "loading"
+        && let Some(pane) = view.chats.pane_mut(PANE)
+    {
+        // A pending first snapshot, without a live agent or observer socket.
+        pane.session = Default::default();
+        pane.prepared = Default::default();
+    }
     if options.case == "selection"
         && let Some(pane) = view.chats.pane_mut(PANE)
     {
@@ -385,6 +435,17 @@ fn install(
         && let Some(pane) = view.chats.pane_mut(PANE)
     {
         pane.expanded.insert(EntryId(1));
+    }
+    if options.case == "tools-open"
+        && let Some(pane) = view.chats.pane_mut(PANE)
+    {
+        pane.expanded.extend([EntryId(902), EntryId(903)]);
+        pane.refresh_text();
+    }
+    if options.case == "live-reconnecting"
+        && let Some(pane) = view.chats.pane_mut(PANE)
+    {
+        pane.session.lost(&super::Error::Overflow);
     }
     if !options.read_only && !existing {
         let font = view.config.ui.clone();
@@ -445,7 +506,7 @@ fn fit_surface(view: &mut HerdrWindow) {
             "",
             "> Explain the uncertainty in more detail",
             "",
-            "  GPT-6-Astra ultra   ~/analysis   synthetic session",
+            "  Example agent   ~/example-project   synthetic session",
             "  Enter to send  |  Shift-Enter newline  |  Esc interrupt",
             "  Paste images and files here using the original agent editor",
             "  Preview only: no agent is connected",
@@ -507,6 +568,20 @@ fn visuals_ready(view: &HerdrWindow) -> Result<bool> {
         };
         match body.as_ref() {
             Body::Image(id) => ids.push(*id),
+            Body::Tool(summary) => {
+                ids.extend(summary.images.iter().copied());
+                // Unknown/oversized source intentionally has no grammar job.
+                // Wait only for code preparation that was actually requested.
+                ids.extend(summary.previews.iter().flat_map(|preview| {
+                    std::iter::once(&preview.code)
+                        .chain(preview.before.iter())
+                        .filter(|code| {
+                            !code.language.is_empty()
+                                && code.source.len() <= super::rich::MAX_CODE_BYTES
+                        })
+                        .map(|code| code.id)
+                }));
+            }
             Body::Message(parts) | Body::Answers { parts, .. } => {
                 for part in parts {
                     ids.extend(match part {

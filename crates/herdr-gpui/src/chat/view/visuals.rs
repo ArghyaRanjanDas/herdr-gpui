@@ -34,6 +34,7 @@ impl HerdrWindow {
         entry: EntryId,
         parts: &[Part],
         visuals: &Visuals,
+        is_user: bool,
         cx: &mut Context<Self>,
     ) -> Div {
         div()
@@ -55,7 +56,16 @@ impl HerdrWindow {
                     Part::Rich(blocks) => {
                         match self.chat_text_scope(pane_id, entry, Region::Body(index)) {
                             Some(scope) => self
-                                .render_chat_rich(pane_id, blocks, visuals, &scope, cx)
+                                .render_chat_rich(
+                                    pane_id,
+                                    blocks,
+                                    visuals,
+                                    &scope,
+                                    is_user
+                                        && self.config.chat.layout
+                                            == crate::config::ChatLayoutMode::IMessage,
+                                    cx,
+                                )
                                 .into_any_element(),
                             None => div().into_any_element(),
                         }

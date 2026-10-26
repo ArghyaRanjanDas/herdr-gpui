@@ -27,7 +27,7 @@ fn imessage_prose_inherits_its_bubble_while_rich_surfaces_keep_theme_ink(cx: &mu
                 &selected,
                 &geometry,
             );
-            let mut prose = view.render_chat_rich("fixture", &[], &visuals, &selection, cx);
+            let mut prose = view.render_chat_rich("fixture", &[], &visuals, &selection, true, cx);
             assert_eq!(prose.text_style().color, None, "{name}: inherit bubble ink");
             for style in [
                 Style::default(),
@@ -37,22 +37,27 @@ fn imessage_prose_inherits_its_bubble_while_rich_surfaces_keep_theme_ink(cx: &mu
                 },
             ] {
                 assert_eq!(
-                    view.rich_style(&style).color,
+                    view.rich_style(&style, true).color,
                     None,
                     "{name}: prose/link ink"
                 );
             }
-            let inline_code = view.rich_style(&Style {
-                code: true,
-                ..Style::default()
-            });
-            assert_eq!(inline_code.color, ink);
-            assert!(crate::contrast::ratio(view.theme.foreground, view.theme.active) >= 4.5);
+            let inline_code = view.rich_style(
+                &Style {
+                    code: true,
+                    ..Style::default()
+                },
+                true,
+            );
+            let code_ink = super::super::super::text_ink(view.theme.palette[5], view.theme.active);
+            assert_eq!(inline_code.color, Some(rgb(code_ink).into()));
+            assert!(crate::contrast::ratio(code_ink, view.theme.active) >= 4.5);
 
             let source: Arc<str> = "plain code".into();
             let (mut code, mut table) = {
                 let links = Links::new(view, "fixture", cx);
                 let mut context = RichContext {
+                    inherit_ink: true,
                     visuals: &visuals,
                     links,
                     selection: &selection,
@@ -118,7 +123,7 @@ fn imessage_prose_inherits_its_bubble_while_rich_surfaces_keep_theme_ink(cx: &mu
             );
 
             view.config.chat.layout = ChatLayoutMode::Document;
-            let mut prose = view.render_chat_rich("fixture", &[], &visuals, &selection, cx);
+            let mut prose = view.render_chat_rich("fixture", &[], &visuals, &selection, false, cx);
             assert_eq!(
                 prose.text_style().color,
                 ink,

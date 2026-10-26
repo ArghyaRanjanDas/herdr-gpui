@@ -4,12 +4,15 @@
 //! prepared when entries changed; nothing here reads a socket. Program text
 //! is untrusted and only ever drawn as text.
 
+mod activity;
 mod composer;
 mod copy;
 mod disclosure;
 mod embeds;
 mod entries;
+mod jump;
 mod layout;
+mod loading;
 mod panels;
 mod rail;
 mod rich;
@@ -83,6 +86,7 @@ pub(super) fn agent_icon(agent: &str) -> &'static str {
 pub(super) struct Hues {
     pub(super) blue: u32,
     pub(super) green: u32,
+    pub(super) purple: u32,
     pub(super) red: u32,
     pub(super) yellow: u32,
 }
@@ -92,6 +96,7 @@ impl Hues {
         Self {
             blue: theme.ink(theme.palette[4]),
             green: theme.ink(theme.palette[2]),
+            purple: theme.ink(theme.palette[5]),
             red: theme.ink(theme.palette[1]),
             yellow: theme.ink(theme.palette[3]),
         }
@@ -143,6 +148,9 @@ impl HerdrWindow {
             .panes
             .iter()
             .flat_map(|pane| {
+                if let Some(loading) = self.render_chat_loading(pane, surface, cx) {
+                    return vec![loading];
+                }
                 let Some(chat) = self.chats.pane(&pane.pane_id) else {
                     return Vec::new();
                 };
@@ -234,6 +242,7 @@ impl HerdrWindow {
         let theme = &self.theme;
         let pane_id = chat.target.pane_id.clone();
         chat.text_geometry.begin_frame();
+        chat.prepared.visuals.begin_frame();
         let entries = {
             let pane_id = pane_id.clone();
             list(
@@ -352,6 +361,7 @@ impl HerdrWindow {
                             .flex_col()
                             .child(
                                 div()
+                                    .relative()
                                     .flex()
                                     .flex_col()
                                     .flex_1()
@@ -359,16 +369,18 @@ impl HerdrWindow {
                                     .when_some(chat.text_focus.as_ref(), |view, focus| {
                                         view.track_focus(focus)
                                     })
-                                    .child(entries),
+                                    .child(entries)
+                                    .child(chat.glide.watch_jump(
+                                        &chat.list,
+                                        !chat.selection.is_empty() || chat.selection.is_selecting(),
+                                    ))
+                                    .children(self.render_chat_jump(chat, cx)),
                             )
                             .when(
                                 chat.selection.is_empty() && !chat.selection.is_selecting(),
                                 |view| view.child(chat.glide.watch(&chat.list)),
                             )
-                            .children(
-                                self.render_chat_working(chat)
-                                    .map(|content| self.chat_column(content)),
-                            )
+                            .child(self.chat_column(self.render_chat_activity(chat)))
                             .children(
                                 self.render_chat_permissions(chat, cx)
                                     .into_iter()
@@ -390,12 +402,6 @@ impl HerdrWindow {
                     .children(self.render_chat_rail(chat, bounds)),
             )
             .into_any_element()
-    }
-
-    /// The layout's sign that the agent is working on a turn.
-    fn render_chat_working(&self, chat: &ChatPane) -> Option<Div> {
-        let working = chat.session.transcript().status == Status::Working;
-        layout::layout_for(self.config.chat.layout).working(working, &self.chat_look())
     }
 
     /// The chat's background where no page shows: on macOS, where a page
@@ -492,15 +498,8 @@ impl HerdrWindow {
         let hues = Hues::of(theme);
         let transcript = chat.session.transcript();
         let status = &transcript.status;
-        let needs_input = chat.input() == ChatInput::Terminal
-            && self.live.agent_status(&chat.target.pane_id)
-                == Some(herdr_client::protocol::AgentStatus::Blocked);
-        let dot = match status {
-            Status::Starting => theme.muted,
-            Status::Idle => hues.green,
-            Status::Working => hues.yellow,
-            Status::Failed { .. } | Status::Exited { .. } => hues.red,
-        };
+        let activity = self.chat_activity(chat);
+        let dot = activity.phase.color(theme);
         let pane_id = chat.target.pane_id.clone();
         let button = |id: &'static str| {
             div()
@@ -606,10 +605,10 @@ impl HerdrWindow {
                             .debug_selector(|| "chat-status".into())
                             .flex_none()
                             .text_color(rgb(theme.subtext()))
-                            .child(if needs_input {
-                                "Needs input".into()
-                            } else {
+                            .child(if activity.phase == activity::Phase::Working {
                                 status_text(transcript)
+                            } else {
+                                activity.phase.label().to_owned()
                             }),
                     )
                     .child(div().flex_1())

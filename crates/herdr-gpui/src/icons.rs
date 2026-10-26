@@ -224,6 +224,7 @@ macro_rules! embedded_icons {
 // on different lines.
 embedded_icons! {
     // keep-sorted start
+    "arrow-down.svg",
     "arrow-left.svg",
     "arrow-right.svg",
     "automations.svg",
