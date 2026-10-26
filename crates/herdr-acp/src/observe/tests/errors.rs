@@ -1,5 +1,4 @@
 use super::*;
-use std::io::Write as _;
 
 fn claude_log(project: &Path) -> std::path::PathBuf {
     fs::create_dir_all(project).unwrap();
@@ -98,6 +97,7 @@ fn an_exited_agent_is_not_an_io_failure() {
 #[cfg(unix)]
 #[test]
 fn rotation_and_rewrites_are_told_apart() {
+    use std::io::Write as _;
     let dir = tempfile::tempdir().unwrap();
     stat(dir.path(), 456);
     let path = claude_log(&dir.path().join(".claude/projects/-work"));

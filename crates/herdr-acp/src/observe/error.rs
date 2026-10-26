@@ -29,6 +29,8 @@ pub enum Error {
     NotUuidV7,
     #[error("the original agent process has changed")]
     ProcessChanged,
+    // Only Unix exposes the inode identity that tells a rotated log apart.
+    #[cfg(unix)]
     #[error("the transcript rotated; reconnect to verify its new file")]
     Rotated,
     #[error("the session id is not a UUID")]
