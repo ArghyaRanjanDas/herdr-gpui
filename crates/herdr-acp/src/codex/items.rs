@@ -27,7 +27,7 @@ pub(crate) fn completed(item: &Value) -> Option<wire::ToolCallUpdate> {
     let id = item.get("id")?.as_str()?;
     let (title, _, content) = describe(item)?;
     let status = match item.get("status").and_then(Value::as_str) {
-        Some("failed" | "declined") => wire::ToolCallStatus::Failed,
+        Some("failed" | "declined" | "interrupted") => wire::ToolCallStatus::Failed,
         Some("inProgress") => wire::ToolCallStatus::InProgress,
         _ => wire::ToolCallStatus::Completed,
     };
@@ -51,7 +51,7 @@ fn describe(item: &Value) -> Option<(String, wire::ToolKind, Vec<wire::ToolCallC
             // The whole command, so what an approval runs is never hidden.
             field("command")
                 .filter(|command| command.lines().nth(1).is_some())
-                .map(out::text)
+                .map(|command| out::text(&bounded_text(command)))
                 .into_iter()
                 .collect(),
         ),
@@ -94,7 +94,8 @@ fn describe(item: &Value) -> Option<(String, wire::ToolKind, Vec<wire::ToolCallC
             wire::ToolKind::Read,
             Vec::new(),
         ),
-        "collabAgentToolCall" | "subAgentActivity" => (
+        "collabToolCall" | "collabAgentToolCall" => collaboration(item),
+        "subAgentActivity" => (
             field("prompt").unwrap_or("Subagent").to_owned(),
             wire::ToolKind::Think,
             Vec::new(),
@@ -103,10 +104,33 @@ fn describe(item: &Value) -> Option<(String, wire::ToolKind, Vec<wire::ToolCallC
     })
 }
 
+fn collaboration(item: &Value) -> (String, wire::ToolKind, Vec<wire::ToolCallContent>) {
+    let label = match item.get("tool").and_then(Value::as_str) {
+        Some("spawnAgent") => "Start agent",
+        Some("sendInput") => "Send agent input",
+        Some("resumeAgent") => "Resume agent",
+        Some("wait") => "Wait for agents",
+        Some("closeAgent") => "Close agent",
+        Some("sendMessage") => "Send agent message",
+        Some("followupTask") => "Assign agent task",
+        Some("interruptAgent") => "Interrupt agent",
+        Some("listAgents") => "List agents",
+        _ => "Agent activity",
+    };
+    let content = item
+        .get("prompt")
+        .and_then(Value::as_str)
+        .filter(|prompt| !prompt.is_empty())
+        .map(|prompt| out::text(&bounded_text(prompt)))
+        .into_iter()
+        .collect();
+    (label.to_owned(), wire::ToolKind::Think, content)
+}
+
 /// What a finished item printed or returned.
 fn output(item: &Value) -> Option<String> {
     let text = match item.get("type").and_then(Value::as_str)? {
-        "commandExecution" => item.get("aggregatedOutput")?.as_str()?.to_owned(),
+        "commandExecution" => bounded_text(item.get("aggregatedOutput")?.as_str()?),
         "mcpToolCall" => {
             if let Some(error) = item.pointer("/error/message").and_then(Value::as_str) {
                 error.to_owned()
@@ -122,6 +146,12 @@ fn output(item: &Value) -> Option<String> {
         _ => return None,
     };
     (!text.trim().is_empty()).then_some(text)
+}
+
+/// Bound before copying potentially large harness text into an ACP update.
+pub(super) fn bounded_text(text: &str) -> String {
+    let end = text.floor_char_boundary(crate::project::MAX_ENTRY_TEXT + 4);
+    crate::project::bounded(text[..end].to_owned())
 }
 
 /// A file change's paths and unified diffs.

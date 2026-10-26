@@ -19,6 +19,7 @@ mod linked_pictures;
 mod media;
 mod permissions;
 mod settings;
+mod streaming;
 
 type Reports = Rc<RefCell<Vec<Activity>>>;
 type TestSession = Session<Box<dyn FnMut(Activity)>>;

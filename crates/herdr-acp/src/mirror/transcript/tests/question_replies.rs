@@ -1,4 +1,5 @@
 use super::*;
+use crate::mirror::transcript::turns::Turns;
 use herdr_chat_protocol::{MAX_QUESTION_ANSWERS, QuestionAnswer};
 
 const TOOL: &str = "request_user_input_async";
@@ -225,6 +226,7 @@ fn projected_question_and_answer_text_counts_toward_retention() {
 #[test]
 fn consumed_question_ids_remain_bounded() {
     let mut projection = Projection {
+        activity: tool_activity::Activity::default(),
         answered: (0..MAX_ENTRIES)
             .map(|index| {
                 (
@@ -241,6 +243,7 @@ fn consumed_question_ids_remain_bounded() {
             .collect(),
         transcript: Transcript::default(),
         tools: HashMap::new(),
+        turns: Turns::default(),
     };
     projection.codex(EntryId(1), &request("call1", &["Question?"]));
     let source = envelope(vec![reply("call1", 0, "Question?", "Answer")]);
@@ -255,6 +258,7 @@ fn consumed_question_ids_remain_bounded() {
 #[test]
 fn remembered_question_text_has_a_separate_memory_bound() {
     let mut projection = Projection {
+        activity: tool_activity::Activity::default(),
         answered: HashMap::from([(
             QuestionKey {
                 call: "old".into(),
@@ -267,6 +271,7 @@ fn remembered_question_text_has_a_separate_memory_bound() {
         )]),
         transcript: Transcript::default(),
         tools: HashMap::new(),
+        turns: Turns::default(),
     };
     projection.codex(EntryId(1), &request("call1", &["Question?"]));
     let source = envelope(vec![reply("call1", 0, "Question?", "Answer")]);

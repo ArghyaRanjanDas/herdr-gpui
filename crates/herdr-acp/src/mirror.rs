@@ -196,6 +196,9 @@ fn changes(previous: &Transcript, next: &Transcript) -> Option<Vec<Change>> {
             usage: next.usage.clone(),
         });
     }
+    if previous.turn != next.turn {
+        changes.push(Change::Turn { turn: next.turn });
+    }
     // If truncation was caused by skipping a record, rather than dropping an
     // entry, only a snapshot can carry the flag accurately.
     if next.truncated

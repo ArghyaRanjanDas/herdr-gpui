@@ -1,7 +1,10 @@
 //! The translation itself, kept free of threads and pipes: each message from
 //! the session or from Claude Code yields the messages to send on.
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    time::Instant,
+};
 
 use acp::v1 as wire;
 use serde_json::{Value, json};
@@ -14,6 +17,8 @@ use crate::{
     },
     rpc::Inbound,
 };
+
+mod progress;
 
 /// What a control request this side sent is waiting for.
 #[derive(Debug)]
@@ -28,9 +33,12 @@ enum Control {
 /// A tool call of the running turn.
 #[derive(Debug)]
 struct Call {
+    completed: bool,
+    elapsed: Option<u32>,
     /// Shown otherwise than as a call (the to-do list is the plan).
     hidden: bool,
     name: String,
+    title: String,
 }
 
 /// Where the handshake stands.
@@ -54,6 +62,7 @@ pub(super) struct Bridge {
     next_request: i64,
     /// `session/new` or `session/load`, answered once Claude's handshake is.
     opening: Option<wire::RequestId>,
+    progress: progress::Progress,
     /// The running `session/prompt`, answered by Claude's `result`.
     prompt: Option<wire::RequestId>,
     session: String,
@@ -74,6 +83,7 @@ impl Bridge {
             next_control: 0,
             next_request: 0,
             opening: None,
+            progress: progress::Progress::default(),
             prompt: None,
             session,
             streamed: HashSet::new(),
@@ -82,6 +92,14 @@ impl Bridge {
 }
 
 impl Translator for Bridge {
+    fn next_tick(&self) -> Option<Instant> {
+        self.progress.active.next_tick()
+    }
+
+    fn tick(&mut self) -> Vec<Out> {
+        self.progress.flush(&self.session)
+    }
+
     /// Claude's handshake.
     fn start(&mut self) -> Vec<Out> {
         vec![self.control(
@@ -110,6 +128,18 @@ impl Translator for Bridge {
 
     fn on_harness(&mut self, message: &Value) -> Vec<Out> {
         let field = |key: &str| message.get(key).and_then(Value::as_str);
+        // The child is launched with this session ID. A foreign activity
+        // message must not seed a known call or complete its progress state.
+        // Handshake/control messages retain their existing routing contract.
+        if matches!(
+            field("type"),
+            Some("assistant" | "user" | "result" | "stream_event")
+        ) && message
+            .get("session_id")
+            .is_some_and(|session| session.as_str() != Some(self.session.as_str()))
+        {
+            return Vec::new();
+        }
         // A subagent's own messages stay inside its call.
         if message
             .get("parent_tool_use_id")
@@ -118,6 +148,10 @@ impl Translator for Bridge {
             return Vec::new();
         }
         match field("type") {
+            Some("tool_progress") => self.tool_progress(message),
+            Some("system") if field("subtype").is_some_and(|kind| kind.starts_with("task_")) => {
+                self.task_event(message)
+            }
             Some("control_response") => self.control_response(message.get("response")),
             Some("control_request") => self.control_request(message),
             Some("system") => self.system(message),
@@ -478,16 +512,25 @@ impl Bridge {
                     outs.extend(text("thinking").map(|text| self.chunk(true, text, id.clone())));
                 }
                 Some("tool_use") => {
-                    let (Some(call), Some(name)) = (text("id"), text("name")) else {
+                    let (Some(call), Some(name)) = (
+                        progress::identifier(block, "id"),
+                        progress::identifier(block, "name"),
+                    ) else {
                         continue;
                     };
                     let input = block.get("input").cloned().unwrap_or(Value::Null);
                     let hidden = name == tools::TODOS;
+                    if self.calls.contains_key(call) || self.calls.len() >= progress::MAX_CALLS {
+                        continue;
+                    }
                     self.calls.insert(
                         call.to_owned(),
                         Call {
+                            completed: false,
+                            elapsed: None,
                             hidden,
                             name: name.to_owned(),
+                            title: progress::text(&tools::title(name, &input)),
                         },
                     );
                     outs.push(self.update(if hidden {
@@ -525,18 +568,27 @@ impl Bridge {
             let Some(id) = block.get("tool_use_id").and_then(Value::as_str) else {
                 continue;
             };
-            let Some(call) = self.calls.get(id).filter(|call| !call.hidden) else {
+            let Some(call) = self
+                .calls
+                .get_mut(id)
+                .filter(|call| !call.hidden && !call.completed)
+            else {
                 continue;
             };
+            call.completed = true;
+            let progress = self.progress.active.remove(id);
             let failed = block.get("is_error").and_then(Value::as_bool) == Some(true);
             let output = block.get("content").unwrap_or(&Value::Null);
-            let fields = wire::ToolCallUpdateFields::new()
+            let mut fields = wire::ToolCallUpdateFields::new()
                 .status(Some(if failed {
                     wire::ToolCallStatus::Failed
                 } else {
                     wire::ToolCallStatus::Completed
                 }))
                 .content(tools::result(&call.name, output, failed));
+            if progress.is_some() {
+                fields = fields.title(Some(call.title.clone()));
+            }
             outs.push(self.update(wire::SessionUpdate::ToolCallUpdate(
                 wire::ToolCallUpdate::new(id.to_owned(), fields),
             )));
@@ -567,6 +619,11 @@ impl Bridge {
             (false, subtype) => Err(error_text(message, subtype)),
         };
         self.interrupted = false;
+        // A background task can outlive this prompt; ordinary tool heartbeats cannot.
+        outs.extend(self.progress.flush(&self.session));
+        for id in self.calls.keys() {
+            self.progress.active.remove(id);
+        }
         self.calls.clear();
         self.streamed.clear();
         self.message = None;

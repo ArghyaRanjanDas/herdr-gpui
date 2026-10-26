@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 use super::*;
 use crate::harness::tests::{file_name, file_uri};
 
+mod progress;
 mod settings;
 mod turns;
 
