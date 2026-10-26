@@ -4,7 +4,7 @@
 use herdr_chat_protocol::{Author, EntryId, EntryKind, Image, MAX_IMAGE_DATA};
 use serde_json::Value;
 
-use super::{BLOCKS, Projection, Role, TEXT, limited, notices, string, text};
+use super::{BLOCKS, Projection, Role, TEXT, notices, string, text_block};
 
 /// Larger records are useful only for inline image bytes, never arbitrary
 /// tool output or text. The caller still enforces the bounded tail size.
@@ -33,7 +33,8 @@ impl Projection {
             return;
         };
         let Some(blocks) = payload["content"].as_array() else {
-            self.message(base, role, text(&payload["content"]));
+            let content = self.text(&payload["content"]);
+            self.message(base, role, content);
             return;
         };
         self.transcript.truncated |= blocks.len() > BLOCKS;
@@ -61,15 +62,15 @@ impl Projection {
                 );
                 self.push(EntryId(id.0 + 1), picture(attachment.image, Author::User));
                 if let Some(caption) = attachment.caption {
-                    self.transcript.truncated |= caption.len() > TEXT;
-                    self.message(EntryId(id.0 + 3), role, limited(caption, TEXT));
+                    let caption = self.clip(caption, TEXT);
+                    self.message(EntryId(id.0 + 3), role, caption);
                 }
                 index += attachment.consumed;
                 continue;
             }
             let block = &blocks[index];
             match string(block, "type") {
-                "text" | "input_text" | "output_text" | "summary_text" => {
+                _ if text_block(block) => {
                     let content = string(block, "text");
                     if role == Role::User
                         && let Some(reply) = self.question_reply(record, content)
@@ -88,8 +89,7 @@ impl Projection {
                             pending.push('\n');
                         }
                         let remaining = TEXT.saturating_sub(pending.len());
-                        self.transcript.truncated |= content.len() > remaining;
-                        pending.push_str(&limited(content, remaining));
+                        pending.push_str(&self.clip(content, remaining));
                     }
                 }
                 "input_image" => {

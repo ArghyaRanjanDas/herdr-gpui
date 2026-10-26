@@ -90,3 +90,12 @@ fn claude_reports_only_the_primary_assistants_bounded_model() {
         "no context capacity was reported"
     );
 }
+
+#[test]
+fn a_codex_header_names_the_same_session_the_observer_verifies() {
+    let payload = json!({"id":"rollout","session_id":"child","cwd":"/work"});
+    let bytes = lines(&[json!({"type":"session_meta","payload":payload})]);
+    let transcript = parse(TranscriptAgent::Codex, &bytes, 0);
+    assert_eq!(transcript.session.unwrap().id, "rollout");
+    assert_eq!(codex_session(&payload), Some("rollout"));
+}

@@ -147,9 +147,12 @@ impl Observer {
         if !self.identity.process_matches()? {
             return Ok(false);
         }
-        self.identity.check()?;
-        if let Some(transcript) = self.source.read()? {
-            self.identity.check()?;
+        // One file check after the read covers both a rotated path and a
+        // file rewritten in place under the read, so its result is never
+        // shown unverified.
+        let next = self.source.read()?;
+        self.identity.check_file()?;
+        if let Some(transcript) = next {
             self.mirror.update(project(&self.session, transcript));
         }
         Ok(true)

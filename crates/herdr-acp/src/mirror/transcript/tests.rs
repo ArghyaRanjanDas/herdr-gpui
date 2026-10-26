@@ -168,8 +168,19 @@ fn a_large_files_tail_keeps_complete_records_and_absolute_entry_ids() {
 fn directories_are_rejected_before_reading() {
     let directory = tempfile::tempdir().unwrap();
     let mut source = Source::new(directory.path().to_owned(), TranscriptAgent::Claude);
-    assert_eq!(
-        source.read().unwrap_err().kind(),
-        io::ErrorKind::InvalidInput
-    );
+    assert!(matches!(source.read().unwrap_err(), Error::NotRegularFile));
+}
+
+#[test]
+fn a_path_missing_for_one_read_is_read_again_once_replaced() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("log.jsonl");
+    let mut source = Source::new(path.clone(), TranscriptAgent::Claude);
+    assert!(matches!(source.read().unwrap_err(), Error::Io(_)));
+    std::fs::write(
+        &path,
+        lines(&[json!({"type":"user","message":{"role":"user","content":"hi"}})]),
+    )
+    .unwrap();
+    assert_eq!(source.read().unwrap().unwrap().entries.len(), 1);
 }

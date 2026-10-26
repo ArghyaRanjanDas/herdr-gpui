@@ -6,6 +6,11 @@ use crate::session::MAX_TRANSCRIPT_MEDIA;
 const ENVIRONMENT: &str = "<environment_context>\n<current_date>2026-10-24</current_date>\n<cwd>/unopened/project</cwd>\n</environment_context>";
 const PNG: &str = "iVBORw0KGgo=";
 
+/// A record's words as the projection reads them.
+fn text(value: &Value) -> String {
+    Projection::default().text(value)
+}
+
 fn input(text: &str) -> Value {
     json!({"type":"input_text", "text":text})
 }

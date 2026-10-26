@@ -1,7 +1,10 @@
 //! A read-only view of one explicitly selected CLI transcript. No agent is
 //! spawned, no Herdr reports are sent, and no transcript command is executed.
 
+mod error;
 pub(crate) mod transcript;
+
+pub use error::{Error, Result};
 
 use std::{
     collections::HashMap,
@@ -44,7 +47,11 @@ pub(crate) fn run(options: MirrorOptions) -> anyhow::Result<()> {
             Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
         }
         if Instant::now() >= next_poll {
-            if let Some(next) = source.read()? {
+            // A CLI that replaces its log by renaming a new file over it
+            // leaves the path briefly missing. The view keeps what it last
+            // showed and the next poll reads whatever file holds the path,
+            // which `update` turns into a fresh snapshot when it was rewritten.
+            if let Ok(Some(next)) = source.read() {
                 mirror.update(next);
             }
             next_poll = Instant::now() + POLL;
@@ -64,10 +71,7 @@ impl Mirror {
     pub(crate) fn new(transcript: Transcript, pane: Option<String>) -> Self {
         Self {
             clients: HashMap::new(),
-            cursor: Cursor {
-                epoch: uuid::Uuid::new_v4(),
-                seq: 0,
-            },
+            cursor: Cursor::new_epoch(),
             pane,
             transcript,
         }
@@ -130,10 +134,7 @@ impl Mirror {
         let Some(changes) = changes(&self.transcript, &next) else {
             // Rewrites/rotation can remove or reorder history. A new epoch
             // makes every client replace it instead of merging two histories.
-            self.cursor = Cursor {
-                epoch: uuid::Uuid::new_v4(),
-                seq: 0,
-            };
+            self.cursor = Cursor::new_epoch();
             self.transcript = next;
             self.broadcast(&self.snapshot());
             return;

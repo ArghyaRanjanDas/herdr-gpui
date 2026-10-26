@@ -32,6 +32,8 @@ pub enum Error {
     Io(#[from] io::Error),
     #[error("a line from the agent exceeded {limit} bytes")]
     LineTooLong { limit: usize },
+    #[error(transparent)]
+    Mirror(#[from] crate::mirror::Error),
     #[error("no directory to listen in: neither XDG_STATE_HOME nor HOME is set")]
     NoEndpointDir,
     #[error(transparent)]
