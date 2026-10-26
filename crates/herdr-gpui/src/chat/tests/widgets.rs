@@ -169,7 +169,8 @@ fn widget_editing_does_not_capture_composer_history_or_draft_keys(cx: &mut TestA
     view.update(cx, |view, _| {
         let pane = view.chats.pane_mut("w1:p1").unwrap();
         pane.draft.push("Keep this line".into());
-        pane.history.push("Previous prompt");
+        pane.history
+            .push("Previous prompt", pane.session.transcript());
     });
     // The draft adds composer height and moves the bottom-aligned message.
     // Read hit bounds only after drawing that changed geometry.

@@ -98,7 +98,9 @@ fn retained_answers_correlate_later_raw_replies_without_the_old_tool() {
     assert!(matches!(&transcript.entries[2].kind,
         EntryKind::Notice { answers, .. } if answers[0].answer == "Updated"
     ));
-    assert!(matches!(&transcript.entries[3].kind, EntryKind::User { text } if text == &unmatched));
+    assert!(
+        matches!(&transcript.entries[3].kind, EntryKind::User { text, .. } if text == &unmatched)
+    );
 }
 
 #[test]
@@ -148,7 +150,7 @@ fn changed_answers_remain_visible_and_explicit_user_pastes_stay_literal() {
         ]
     );
     assert!(
-        matches!(&transcript.entries.last().unwrap().kind, EntryKind::User { text } if text == &source)
+        matches!(&transcript.entries.last().unwrap().kind, EntryKind::User { text, .. } if text == &source)
     );
 }
 
@@ -187,7 +189,7 @@ fn retained_rows_are_typed_bounded_and_not_inferred_from_pasted_json() {
     }
     let source = record.to_string();
     let transcript = parse(TranscriptAgent::Codex, &lines(&[message(&[&source])]), 0);
-    assert!(matches!(&transcript.entries[0].kind, EntryKind::User { text } if text == &source));
+    assert!(matches!(&transcript.entries[0].kind, EntryKind::User { text, .. } if text == &source));
 }
 
 #[test]
@@ -206,7 +208,7 @@ fn compaction_only_exposes_its_bounded_message_and_preserves_later_entries() {
         if text == "Context compacted" && details.len() <= TEXT && !details.contains("Hidden history")
     ));
     assert!(
-        matches!(&transcript.entries[1].kind, EntryKind::User { text } if text == "Later message")
+        matches!(&transcript.entries[1].kind, EntryKind::User { text, .. } if text == "Later message")
     );
     assert!(transcript.truncated);
 }

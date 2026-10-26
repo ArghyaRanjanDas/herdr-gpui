@@ -37,6 +37,7 @@ mod observer_program;
 mod overlay;
 mod prepared;
 mod questions;
+mod recall;
 mod selection;
 mod session;
 mod start;

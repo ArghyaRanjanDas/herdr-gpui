@@ -268,7 +268,7 @@ impl Prepared {
             }
             let visuals = &mut self.visuals;
             let body = match &entry.kind {
-                EntryKind::User { text } => Body::Message(message(text, Author::User, visuals)),
+                EntryKind::User { text, .. } => Body::Message(message(text, Author::User, visuals)),
                 EntryKind::Notice { answers, .. } if !answers.is_empty() => {
                     let text: Rc<str> = answers_text(answers).into();
                     let parts = vec![prose(&text, visuals)];

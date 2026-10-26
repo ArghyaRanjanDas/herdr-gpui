@@ -19,6 +19,7 @@ mod preview;
 mod search;
 mod settings;
 mod terminal_view;
+mod turn_patch;
 
 pub(super) fn row(pane: &str) -> ChatRow {
     ChatRow {

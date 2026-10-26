@@ -267,7 +267,7 @@ impl Projection {
             return;
         }
         let kind = match role {
-            Role::User => EntryKind::User { text },
+            Role::User => EntryKind::User { text, files: 0 },
             Role::Agent => EntryKind::Agent { text },
             Role::Thought => EntryKind::Thought { text },
         };

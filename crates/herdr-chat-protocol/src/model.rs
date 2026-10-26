@@ -139,6 +139,10 @@ pub enum EntryKind {
     /// Something the user said; prompts sent from any client, or replayed history.
     User {
         text: String,
+        /// How many lines at the end of `text` name the files the prompt
+        /// carried, each starting with [`ATTACHED`]; the user typed the rest.
+        #[serde(default, skip_serializing_if = "is_zero")]
+        files: usize,
     },
     /// The agent's answer, streamed in chunks.
     Agent {
@@ -183,7 +187,7 @@ pub struct QuestionAnswer {
 impl EntryKind {
     pub fn text(&self) -> Option<&str> {
         match self {
-            Self::User { text }
+            Self::User { text, .. }
             | Self::Agent { text }
             | Self::Thought { text }
             | Self::Notice { text, .. } => Some(text),
@@ -193,7 +197,7 @@ impl EntryKind {
 
     pub(crate) fn text_mut(&mut self) -> Option<&mut String> {
         match self {
-            Self::User { text }
+            Self::User { text, .. }
             | Self::Agent { text }
             | Self::Thought { text }
             | Self::Notice { text, .. } => Some(text),
@@ -379,6 +383,14 @@ pub struct Queued {
     pub attachments: Vec<Attachment>,
     pub id: CommandId,
     pub text: String,
+}
+
+/// Starts each line the transcript adds after a prompt's text, one per file
+/// the prompt carried.
+pub const ATTACHED: &str = "\u{1f4ce} ";
+
+fn is_zero(count: &usize) -> bool {
+    *count == 0
 }
 
 /// The most files one prompt carries.

@@ -302,7 +302,7 @@ fn project(
                 details: Some(_),
                 ..
             } => builder.plain(Region::Body(0), Cell::default(), notice_label(text)),
-            EntryKind::User { text }
+            EntryKind::User { text, .. }
             | EntryKind::Agent { text }
             | EntryKind::Thought { text }
             | EntryKind::Notice { text, .. } => {

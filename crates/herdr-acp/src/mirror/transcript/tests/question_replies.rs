@@ -77,11 +77,13 @@ fn multiple_answers_and_mixed_user_blocks_preserve_order_and_ids() {
         ]),
         0,
     );
-    assert!(matches!(&transcript.entries[1].kind, EntryKind::User { text } if text == "Before"));
+    assert!(
+        matches!(&transcript.entries[1].kind, EntryKind::User { text, .. } if text == "Before")
+    );
     assert!(matches!(&transcript.entries[2].kind,
         EntryKind::Notice { answers, text, .. } if text == "Questions answered" && answers.iter().map(|a| a.answer.as_str()).eq(["β", "α"])
     ));
-    assert!(matches!(&transcript.entries[3].kind, EntryKind::User { text } if text == "After"));
+    assert!(matches!(&transcript.entries[3].kind, EntryKind::User { text, .. } if text == "After"));
     assert_eq!(transcript.entries[2].id.0, transcript.entries[1].id.0 + 1);
     assert_eq!(transcript.entries[3].id.0, transcript.entries[1].id.0 + 2);
 }
@@ -125,7 +127,9 @@ fn unmatched_or_unverified_replies_stay_literal_user_text() {
             .unwrap()
             .to_owned();
         let transcript = parse(TranscriptAgent::Codex, &lines(&[request, record]), 0);
-        assert!(matches!(&transcript.entries[1].kind, EntryKind::User { text } if text == &source));
+        assert!(
+            matches!(&transcript.entries[1].kind, EntryKind::User { text, .. } if text == &source)
+        );
     }
     let transcript = parse(TranscriptAgent::Codex, &lines(&[message(&[&valid])]), 0);
     assert!(matches!(
@@ -197,14 +201,16 @@ fn answer_count_and_source_limits_fall_back_to_bounded_user_text() {
         &lines(&[request("call1", &questions), message(&[&source])]),
         0,
     );
-    assert!(matches!(&transcript.entries[1].kind, EntryKind::User { text } if text == &source));
+    assert!(matches!(&transcript.entries[1].kind, EntryKind::User { text, .. } if text == &source));
     let source = envelope(vec![reply("call1", 0, "Question?", &"α".repeat(TEXT))]);
     let transcript = parse(
         TranscriptAgent::Codex,
         &lines(&[request("call1", &["Question?"]), message(&[&source])]),
         0,
     );
-    assert!(matches!(&transcript.entries[1].kind, EntryKind::User { text } if text.len() <= TEXT));
+    assert!(
+        matches!(&transcript.entries[1].kind, EntryKind::User { text, .. } if text.len() <= TEXT)
+    );
     assert!(transcript.truncated);
 }
 

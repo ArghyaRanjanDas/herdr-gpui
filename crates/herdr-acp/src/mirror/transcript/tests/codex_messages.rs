@@ -109,7 +109,7 @@ fn legacy_native_context_requires_exact_aligned_kinds_and_no_per_item_metadata()
         for record in rejected {
             let transcript = parse(TranscriptAgent::Codex, &lines(&[record]), 0);
             assert!(
-                matches!(&transcript.entries[0].kind, EntryKind::User { text } if text == ENVIRONMENT)
+                matches!(&transcript.entries[0].kind, EntryKind::User { text, .. } if text == ENVIRONMENT)
             );
         }
     }
@@ -147,13 +147,15 @@ fn codex_mixed_user_and_harness_content_preserves_authorship_order_and_ids() {
     );
     let bytes = lines(&[record]);
     let transcript = parse(TranscriptAgent::Codex, &bytes, 20);
-    assert!(matches!(&transcript.entries[0].kind, EntryKind::User { text } if text == "Before"));
+    assert!(
+        matches!(&transcript.entries[0].kind, EntryKind::User { text, .. } if text == "Before")
+    );
     assert!(matches!(
         &transcript.entries[1].kind,
         EntryKind::Notice { .. }
     ));
     assert!(
-        matches!(&transcript.entries[2].kind, EntryKind::User { text } if text == "After\nMore")
+        matches!(&transcript.entries[2].kind, EntryKind::User { text, .. } if text == "After\nMore")
     );
     assert_eq!(transcript.entries[0].id, EntryId(21 * BLOCKS as u64));
     assert_eq!(transcript.entries[1].id.0, transcript.entries[0].id.0 + 1);
@@ -210,7 +212,7 @@ fn codex_environment_words_cannot_replace_missing_or_malformed_provenance() {
     for record in cases {
         let transcript = parse(TranscriptAgent::Codex, &lines(&[record]), 0);
         assert!(
-            matches!(&transcript.entries[0].kind, EntryKind::User { text } if text == ENVIRONMENT)
+            matches!(&transcript.entries[0].kind, EntryKind::User { text, .. } if text == ENVIRONMENT)
         );
     }
     let mut assistant = environment();
@@ -250,7 +252,7 @@ fn codex_embedded_attachment_renders_image_keeps_caption_and_preserves_wrapper_s
             if image.kind == ImageType::Png && image.data == PNG
     ));
     assert!(
-        matches!(&transcript.entries[2].kind, EntryKind::User { text } if text == "Actual user caption")
+        matches!(&transcript.entries[2].kind, EntryKind::User { text, .. } if text == "Actual user caption")
     );
     assert!(
         transcript
@@ -279,7 +281,7 @@ fn codex_invalid_or_external_images_show_unavailable_without_base64_or_losing_us
             matches!(&transcript.entries[1].kind, EntryKind::Notice { text, details: Some(details), .. } if text == "Image unavailable" && !details.contains(url))
         );
         assert!(
-            matches!(&transcript.entries[2].kind, EntryKind::User { text } if text == "Actual user caption")
+            matches!(&transcript.entries[2].kind, EntryKind::User { text, .. } if text == "Actual user caption")
         );
         assert!(
             transcript
@@ -298,7 +300,7 @@ fn codex_pasted_attachment_wrappers_stay_user_text() {
         &lines(&[message(vec![input(literal)], &["user.text"], &["user"])]),
         0,
     );
-    assert!(matches!(&transcript.entries[0].kind, EntryKind::User { text } if text == literal));
+    assert!(matches!(&transcript.entries[0].kind, EntryKind::User { text, .. } if text == literal));
 }
 
 #[test]
@@ -307,21 +309,21 @@ fn codex_wrapper_cleanup_requires_matching_provenance_and_does_not_strip_other_r
     missing["payload"]["internal_chat_message_metadata_passthrough"] = Value::Null;
     let transcript = parse(TranscriptAgent::Codex, &lines(&[missing]), 0);
     assert!(
-        matches!(&transcript.entries[0].kind, EntryKind::User { text } if text.starts_with("<image name="))
+        matches!(&transcript.entries[0].kind, EntryKind::User { text, .. } if text.starts_with("<image name="))
     );
     assert!(matches!(
         &transcript.entries[1].kind,
         EntryKind::Image { .. }
     ));
     assert!(
-        matches!(&transcript.entries[2].kind, EntryKind::User { text } if text == "</image>\n[Image #1]Actual user caption")
+        matches!(&transcript.entries[2].kind, EntryKind::User { text, .. } if text == "</image>\n[Image #1]Actual user caption")
     );
 
     let mut other = attachment(image());
     other["payload"]["content"][3]["text"] = json!("[Image #2]Keep this reference");
     let transcript = parse(TranscriptAgent::Codex, &lines(&[other]), 0);
     assert!(
-        matches!(&transcript.entries[2].kind, EntryKind::User { text } if text == "[Image #2]Keep this reference")
+        matches!(&transcript.entries[2].kind, EntryKind::User { text, .. } if text == "[Image #2]Keep this reference")
     );
 }
 
@@ -376,7 +378,7 @@ fn codex_image_records_larger_than_one_mebibyte_keep_the_image_and_caption() {
         matches!(&transcript.entries[0].kind, EntryKind::Image { image, .. } if image.data == data)
     );
     assert!(
-        matches!(&transcript.entries[1].kind, EntryKind::User { text } if text == "Caption after a large attachment")
+        matches!(&transcript.entries[1].kind, EntryKind::User { text, .. } if text == "Caption after a large attachment")
     );
     assert!(!transcript.truncated);
 }
@@ -397,7 +399,7 @@ fn codex_oversized_image_data_has_a_compact_fallback_and_keeps_its_caption() {
         matches!(&transcript.entries[0].kind, EntryKind::Notice { text, details: Some(details), .. } if text == "Image unavailable" && details.len() < 256 && !details.contains("AAAA"))
     );
     assert!(
-        matches!(&transcript.entries[1].kind, EntryKind::User { text } if text == "Keep this caption")
+        matches!(&transcript.entries[1].kind, EntryKind::User { text, .. } if text == "Keep this caption")
     );
 }
 
