@@ -372,7 +372,7 @@ fn hostile_labels_and_paths_are_bounded_without_changing_raw_input() {
     );
     assert_eq!(
         entry_size(&transcript.entries[0]),
-        tool.call_id.len() + tool.title.len() + input.to_string().len()
+        tool.title.len() + input.to_string().len()
     );
     let transcript = project(
         TranscriptAgent::Codex,
@@ -380,7 +380,7 @@ fn hostile_labels_and_paths_are_bounded_without_changing_raw_input() {
     );
     assert_eq!(
         entry_size(&transcript.entries[0]),
-        1 + "/a".len() + "/a".len() + json!({"file_path":"/a"}).to_string().len()
+        "/a".len() + "/a".len() + json!({"file_path":"/a"}).to_string().len()
     );
 }
 

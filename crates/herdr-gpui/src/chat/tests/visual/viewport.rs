@@ -26,8 +26,8 @@ fn exact_screenshot_math_and_later_code_render_and_scrollback_recovers(cx: &mut 
     prepared.update(&transcript, &keys);
     let before = prepared.body(latest).unwrap();
     let formulas = [
-        VisualId::of(("math", false, "A, C, G, b")),
-        VisualId::of(("math", false, r"d4/\chi4/R2")),
+        VisualId::of(("math", rich::MathMode::Inline, "A, C, G, b")),
+        VisualId::of(("math", rich::MathMode::Inline, r"d4/\chi4/R2")),
     ];
     let code = VisualId::of(("code", "rust", "let recovered = 42;\n"));
     assert!(formulas.iter().all(|id| !prepared.visuals.wants(*id)));
@@ -54,12 +54,14 @@ fn exact_screenshot_math_and_later_code_render_and_scrollback_recovers(cx: &mut 
     assert_eq!(prepared.visuals.rich_budget().0, visual::MAX_RICH_VISUALS);
     let missing = (0..visual::MAX_RICH_VISUALS)
         .find(|n| {
-            !prepared
-                .visuals
-                .wants(VisualId::of(("math", false, format!("x_{{{n}}}"))))
+            !prepared.visuals.wants(VisualId::of((
+                "math",
+                rich::MathMode::Inline,
+                format!("x_{{{n}}}"),
+            )))
         })
         .unwrap();
-    let old = VisualId::of(("math", false, format!("x_{{{missing}}}")));
+    let old = VisualId::of(("math", rich::MathMode::Inline, format!("x_{{{missing}}}")));
     prepared.visuals.begin_frame();
     prepared.request_visible(EntryId(missing as u64 + 1), false);
     let jobs = prepared.visuals.jobs(&styled(0xffffff), &renderer);
@@ -284,7 +286,7 @@ fn idle_lazy_list_render_and_scroll_schedule_visible_jobs_without_new_agent_outp
         "This **F3/E1, \\(d4/\\chi4/R2\\)** seed.\n\n```rust\nlet visible = 1;\n```",
     ));
     let _stream = attach_with(&view, &program, snapshot(cursor(1, 0), entries), cx);
-    let latest = VisualId::of(("math", false, r"d4/\chi4/R2"));
+    let latest = VisualId::of(("math", rich::MathMode::Inline, r"d4/\chi4/R2"));
     wait_until(|| {
         cx.run_until_parked();
         poll(&view, &program, cx);
@@ -303,10 +305,16 @@ fn idle_lazy_list_render_and_scroll_schedule_visible_jobs_without_new_agent_outp
     let missing = view.read_with(cx, |view, _| {
         let visuals = &view.chats.pane("w1:p1").unwrap().prepared.visuals;
         (0..visual::MAX_RICH_VISUALS)
-            .find(|n| !visuals.wants(VisualId::of(("math", false, format!("x_{{{n}}}")))))
+            .find(|n| {
+                !visuals.wants(VisualId::of((
+                    "math",
+                    rich::MathMode::Inline,
+                    format!("x_{{{n}}}"),
+                )))
+            })
             .unwrap()
     });
-    let old = VisualId::of(("math", false, format!("x_{{{missing}}}")));
+    let old = VisualId::of(("math", rich::MathMode::Inline, format!("x_{{{missing}}}")));
     view.update(cx, |view, cx| {
         let pane = view.chats.pane_mut("w1:p1").unwrap();
         pane.list.scroll_to(gpui::ListOffset {
