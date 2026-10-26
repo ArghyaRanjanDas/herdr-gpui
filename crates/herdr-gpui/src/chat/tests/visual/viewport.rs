@@ -262,8 +262,8 @@ fn collapsed_tools_request_no_code_jobs_and_table_math_keeps_display_style(
     };
     let size = Config::default().ui.size;
     let ink = Theme::default().foreground;
-    let display = rich::draw_math(r"\frac{a}{b}", true, size, ink).unwrap();
-    let inline = rich::draw_math(r"\frac{a}{b}", false, size, ink).unwrap();
+    let display = rich::draw_math(r"\frac{a}{b}", rich::MathMode::Display, size, ink).unwrap();
+    let inline = rich::draw_math(r"\frac{a}{b}", rich::MathMode::Inline, size, ink).unwrap();
     assert_eq!(height, display.height);
     assert!(height > inline.height);
     assert!(prepared.visuals.finish(id, ticket, result));
