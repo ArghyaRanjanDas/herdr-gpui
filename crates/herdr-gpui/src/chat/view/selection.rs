@@ -305,6 +305,33 @@ impl<'a> Scope<'a> {
     }
 }
 
+/// `text` with `marks`, and with the selection's highlight where it has a
+/// fragment of the document.
+pub(crate) fn styled_text(
+    fragment: Option<&Fragment>,
+    text: impl Into<SharedString>,
+    marks: impl IntoIterator<Item = (Range<usize>, HighlightStyle)>,
+    theme: &Theme,
+) -> StyledText {
+    match fragment {
+        Some(fragment) => fragment.styled(text, marks, theme),
+        None => StyledText::new(text).with_highlights(marks),
+    }
+}
+
+/// `view`, selectable where it draws a fragment of the document.
+pub(crate) fn selectable(
+    fragment: Option<&Fragment>,
+    view: Div,
+    layout: TextLayout,
+    cx: &mut Context<HerdrWindow>,
+) -> Div {
+    match fragment {
+        Some(fragment) => fragment.wrap(view, layout, cx),
+        None => view,
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct Fragment {
     pane: String,

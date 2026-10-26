@@ -108,8 +108,10 @@ impl HerdrWindow {
                             ));
                         return self.render_chat_entry_row(chat, index, card);
                     }
-                    _ => self.render_chat_plain_text(
-                        self.chat_text_scope(pane_id, entry.id, Region::Body(0)),
+                    _ => self.render_chat_text(
+                        pane_id,
+                        entry.id,
+                        Region::Body(0),
                         Cell::default(),
                         text.clone(),
                         cx,
@@ -126,8 +128,10 @@ impl HerdrWindow {
                     ))
             }
             EntryKind::Turn(summary) => {
-                let text = self.render_chat_plain_text(
-                    self.chat_text_scope(pane_id, entry.id, Region::Body(0)),
+                let text = self.render_chat_text(
+                    pane_id,
+                    entry.id,
+                    Region::Body(0),
                     Cell::default(),
                     summary.describe(),
                     cx,
@@ -213,8 +217,10 @@ impl HerdrWindow {
                     .min_w_0()
                     .when(!expanded, |row| row.truncate())
                     .when(expanded, |row| row.overflow_x_scroll())
-                    .child(self.render_chat_plain_text(
-                        self.chat_text_scope(pane_id, id, Region::Body(0)),
+                    .child(self.render_chat_text(
+                        pane_id,
+                        id,
+                        Region::Body(0),
                         Cell::default(),
                         shown,
                         cx,
@@ -240,7 +246,7 @@ impl HerdrWindow {
             ToolStatus::Completed => ("done", hues.green),
             ToolStatus::Failed => ("failed", hues.red),
         };
-        let small = px((self.chat_text_size() - 1.).max(10.));
+        let small = self.chat_small_text();
         let summary = match body {
             Some(Body::Tool(summary)) => Some(summary),
             _ => None,
@@ -272,8 +278,10 @@ impl HerdrWindow {
                     .text_font(&self.config.terminal)
                     .text_size(px(self.config.terminal.size - 1.))
                     .text_color(rgb(theme.subtext()))
-                    .child(self.render_chat_plain_text(
-                        self.chat_text_scope(pane_id, entry, Region::Label),
+                    .child(self.render_chat_text(
+                        pane_id,
+                        entry,
+                        Region::Label,
                         Cell::default(),
                         tool_header(&tool.title),
                         cx,
@@ -306,15 +314,19 @@ impl HerdrWindow {
                         .text_size(small)
                         .text_font(&self.config.terminal)
                         .text_color(rgb(theme.subtext()))
-                        .child(self.render_chat_plain_text(
-                            self.chat_text_scope(pane_id, entry, Region::ToolTitle),
+                        .child(self.render_chat_text(
+                            pane_id,
+                            entry,
+                            Region::ToolTitle,
                             Cell::default(),
                             tool.title.clone(),
                             cx,
                         ))
                         .children(tool.locations.iter().enumerate().map(|(index, location)| {
-                            self.render_chat_plain_text(
-                                self.chat_text_scope(pane_id, entry, Region::ToolLocations),
+                            self.render_chat_text(
+                                pane_id,
+                                entry,
+                                Region::ToolLocations,
                                 Cell::row(index),
                                 location.clone(),
                                 cx,
@@ -335,8 +347,10 @@ impl HerdrWindow {
                                     .w_full()
                                     .overflow_x_scroll()
                                     .py(px(3.))
-                                    .child(self.render_chat_plain_text(
-                                        self.chat_text_scope(pane_id, entry, Region::ToolContent),
+                                    .child(self.render_chat_text(
+                                        pane_id,
+                                        entry,
+                                        Region::ToolContent,
                                         Cell::block(index),
                                         text,
                                         cx,
@@ -360,7 +374,7 @@ impl HerdrWindow {
     ) -> Vec<AnyElement> {
         let theme = &self.theme;
         let hues = Hues::of(theme);
-        let small = px((self.chat_text_size() - 1.).max(10.));
+        let small = self.chat_small_text();
         let note = |text: String| {
             div()
                 .text_size(small)
@@ -479,14 +493,14 @@ impl HerdrWindow {
             NoticeLevel::Error => hues.red,
         };
         let Some(details) = details else {
-            return div()
-                .text_color(rgb(color))
-                .child(self.render_chat_plain_text(
-                    self.chat_text_scope(pane_id, id, Region::Body(0)),
-                    Cell::default(),
-                    text.to_owned(),
-                    cx,
-                ));
+            return div().text_color(rgb(color)).child(self.render_chat_text(
+                pane_id,
+                id,
+                Region::Body(0),
+                Cell::default(),
+                text.to_owned(),
+                cx,
+            ));
         };
         let expanded = self
             .chats
@@ -500,17 +514,14 @@ impl HerdrWindow {
             .min_w_0()
             .gap(px(6.))
             .child(chevron(expanded, theme))
-            .child(
-                div()
-                    .min_w_0()
-                    .truncate()
-                    .child(self.render_chat_plain_text(
-                        self.chat_text_scope(pane_id, id, Region::Body(0)),
-                        Cell::default(),
-                        notice_label(text),
-                        cx,
-                    )),
-            );
+            .child(div().min_w_0().truncate().child(self.render_chat_text(
+                pane_id,
+                id,
+                Region::Body(0),
+                Cell::default(),
+                notice_label(text),
+                cx,
+            )));
         div()
             .flex()
             .flex_col()
@@ -538,11 +549,13 @@ impl HerdrWindow {
                                 .w_full()
                                 .overflow_x_scroll()
                                 .text_font(&self.config.terminal)
-                                .text_size(px((self.chat_text_size() - 1.).max(10.)))
+                                .text_size(self.chat_small_text())
                                 // Imported content is inert source text, including
                                 // XML, commands, URLs, and output-file paths.
-                                .child(self.render_chat_plain_text(
-                                    self.chat_text_scope(pane_id, id, Region::Details),
+                                .child(self.render_chat_text(
+                                    pane_id,
+                                    id,
+                                    Region::Details,
                                     Cell::default(),
                                     details.to_owned(),
                                     cx,

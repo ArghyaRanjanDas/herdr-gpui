@@ -147,11 +147,7 @@ impl Existing {
                 Ok(bindings) => {
                     let settled = self.bindings == bindings && self.error.is_none();
                     changed |= !settled;
-                    self.interval = if settled {
-                        (self.interval * 2).clamp(REFRESH, SETTLED)
-                    } else {
-                        REFRESH
-                    };
+                    self.pace(settled);
                     self.bindings = bindings;
                     self.error = None;
                     self.failures = 0;
@@ -179,14 +175,26 @@ impl Existing {
 
     /// A single unreachable probe, such as one dropped SSH round trip, keeps
     /// the overlays. Repeated failures are not evidence that the old agent
-    /// still owns the pane, so they return it to its original terminal.
+    /// still owns the pane, so they return it to its original terminal. A
+    /// host that keeps failing, such as one without Linux process metadata,
+    /// backs off like one that keeps answering the same.
     fn fail(&mut self, error: Error) {
         self.failures = self.failures.saturating_add(1);
         if self.failures >= MAX_FAILURES {
             self.bindings.clear();
         }
         self.error = Some(error);
-        self.interval = REFRESH;
+        self.pace(self.failures > 1);
+    }
+
+    /// The next wait: `REFRESH` after news, doubling up to `SETTLED` while
+    /// each probe only repeats the last outcome.
+    fn pace(&mut self, repeated: bool) {
+        self.interval = if repeated {
+            (self.interval * 2).clamp(REFRESH, SETTLED)
+        } else {
+            REFRESH
+        };
     }
 }
 
@@ -250,13 +258,17 @@ fn inspect_host(
         else {
             continue;
         };
-        selected.push((pane, agent, session));
+        selected.push(Selected {
+            pane,
+            agent,
+            session,
+        });
     }
     if selected.is_empty() {
         return Ok(Vec::new());
     }
-    let process_script = selected.iter().map(|(pane, _, _)| {
-        let pane = shell_quote(&pane.pane_id);
+    let process_script = selected.iter().map(|selected| {
+        let pane = shell_quote(&selected.pane.pane_id);
         format!("printf '\\036%s\\n' {pane}\nherdr_cli pane process-info --pane {pane} 2>/dev/null || :\n")
     }).collect::<String>();
     let bytes = query(host, &process_script, cancelled)?;
@@ -268,18 +280,11 @@ fn inspect_host(
         .collect();
     let pids: BTreeSet<_> = selected
         .iter()
-        .filter_map(|(pane, agent, _)| {
-            let info = infos.get(pane.pane_id.as_str())?;
-            let matches: Vec<_> = info
-                .foreground_processes
-                .iter()
-                .filter(|process| is_agent(*agent, &process.argv))
-                .take(MAX_MATCHING_PROCESSES + 1)
-                .map(|process| process.pid)
-                .collect();
-            (matches.len() <= MAX_MATCHING_PROCESSES).then_some(matches)
+        .filter_map(|selected| {
+            agent_processes(selected.agent, infos.get(selected.pane.pane_id.as_str())?)
         })
         .flatten()
+        .map(|process| process.pid)
         .collect();
     if pids.is_empty() {
         return Ok(Vec::new());
@@ -313,9 +318,14 @@ fn inspect_host(
     };
     Ok(selected
         .iter()
-        .filter_map(|(pane, agent, session)| {
+        .filter_map(|selected| {
+            let &Selected {
+                pane,
+                agent,
+                session,
+            } = selected;
             let info = infos.get(pane.pane_id.as_str())?;
-            let pid = agent_pid(*agent, info, &processes)?;
+            let pid = agent_pid(agent, info, &processes)?;
             let unchanged = last.snapshot.pane(&pane.pane_id).is_some_and(|after| {
                 pane.agent_session == after.agent_session && pane.agent == after.agent
             });
@@ -324,7 +334,7 @@ fn inspect_host(
             }
             Some(Binding {
                 pane_id: pane.pane_id.clone(),
-                agent: *agent,
+                agent,
                 session_id: session.value.clone(),
                 herdr_session: herdr_session.clone(),
                 pid,
@@ -384,14 +394,8 @@ fn agent_pid(
     processes: &HashMap<u32, ProcessIdentity>,
 ) -> Option<u32> {
     let group = info.foreground_process_group_id?;
-    let matching: Vec<_> = info
-        .foreground_processes
-        .iter()
-        .filter(|process| is_agent(agent, &process.argv))
-        .take(MAX_MATCHING_PROCESSES + 1)
-        .collect();
+    let matching = agent_processes(agent, info)?;
     if matching.is_empty()
-        || matching.len() > MAX_MATCHING_PROCESSES
         || matching.iter().any(|process| {
             processes
                 .get(&process.pid)
@@ -403,9 +407,9 @@ fn agent_pid(
     if matching.len() == 1 {
         return Some(matching[0].pid);
     }
-    let mut native = matching.iter().filter(|process| {
-        process.argv.first().and_then(|arg| arg.rsplit('/').next()) == Some(agent.name())
-    });
+    let mut native = matching
+        .iter()
+        .filter(|process| program(&process.argv) == Some(agent.name()));
     let pid = native.next()?.pid;
     if native.next().is_some() {
         return None;
@@ -442,8 +446,35 @@ fn sections(bytes: &[u8]) -> impl Iterator<Item = (&str, &str)> {
         .filter_map(|part| part.split_once('\n'))
 }
 
+/// A pane whose reported session names an agent that may be observed.
+struct Selected<'a> {
+    pane: &'a teleport::snapshot::Pane,
+    agent: Agent,
+    session: &'a teleport::snapshot::AgentSession,
+}
+
+/// The foreground processes running `agent`, unless there are more than
+/// [`MAX_MATCHING_PROCESSES`] to verify.
+fn agent_processes(
+    agent: Agent,
+    info: &teleport::ProcessInfo,
+) -> Option<Vec<&teleport::snapshot::Process>> {
+    let matching: Vec<_> = info
+        .foreground_processes
+        .iter()
+        .filter(|process| is_agent(agent, &process.argv))
+        .take(MAX_MATCHING_PROCESSES + 1)
+        .collect();
+    (matching.len() <= MAX_MATCHING_PROCESSES).then_some(matching)
+}
+
+/// The program an argument vector runs, without its directory.
+fn program(argv: &[String]) -> Option<&str> {
+    argv.first()?.rsplit('/').next()
+}
+
 fn is_agent(agent: Agent, argv: &[String]) -> bool {
-    let Some(program) = argv.first().and_then(|arg| arg.rsplit('/').next()) else {
+    let Some(program) = program(argv) else {
         return false;
     };
     if program == agent.name() {

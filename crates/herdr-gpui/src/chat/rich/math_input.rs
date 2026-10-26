@@ -5,6 +5,14 @@
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 use std::{collections::HashMap, ops::Range};
 
+/// Markdown whose TeX delimiters are all `$` or `$$`, with the code and HTML
+/// left verbatim, located in `text` and sorted, as [`protected_ranges`] finds
+/// them.
+pub(super) struct Normalized {
+    pub(super) text: String,
+    pub(super) protected: Vec<Range<usize>>,
+}
+
 pub(super) struct DisplayInput {
     pub(super) markdown: String,
     pub(super) sources: HashMap<usize, String>,
@@ -12,8 +20,8 @@ pub(super) struct DisplayInput {
 
 /// Placeholder offsets, rather than marker text, identify formulas. A user
 /// writing the same marker literally cannot alias another formula's source.
-pub(super) fn protect_display(text: &str) -> DisplayInput {
-    let protected = protected_ranges(text);
+pub(super) fn protect_display(input: &Normalized) -> DisplayInput {
+    let Normalized { text, protected } = input;
     let bytes = text.as_bytes();
     let mut delimiters = Vec::new();
     let (mut at, mut range) = (0, 0);
@@ -71,35 +79,16 @@ pub(super) fn protect_display(text: &str) -> DisplayInput {
 /// Block quote markers belong to Markdown, never to the TeX expression. Keep
 /// actual comparison symbols and all formula whitespace after those markers.
 fn formula_source(source: &str, prefix: &str) -> String {
-    let mut rest = prefix;
-    let mut quotes = 0;
-    loop {
-        rest = rest.trim_start_matches(' ');
-        let Some(after) = rest.strip_prefix('>') else {
-            break;
-        };
-        quotes += 1;
-        rest = after.strip_prefix(' ').unwrap_or(after);
-    }
+    let quotes = super::quote::depth(prefix);
     if quotes == 0 {
         return source.to_owned();
     }
     source
         .split_inclusive('\n')
         .enumerate()
-        .map(|(index, line)| {
-            if index == 0 {
-                return line;
-            }
-            let mut rest = line;
-            for _ in 0..quotes {
-                let candidate = rest.trim_start_matches(' ');
-                let Some(after) = candidate.strip_prefix('>') else {
-                    return line;
-                };
-                rest = after.strip_prefix(' ').unwrap_or(after);
-            }
-            rest
+        .map(|(index, line)| match index {
+            0 => line,
+            _ => super::quote::strip(line, quotes).unwrap_or(line),
         })
         .collect()
 }

@@ -87,24 +87,7 @@ fn layout(
         // Its editor lies outside our viewport: do not label a clipped tail
         // as input, or move terminal cells away from their input coordinates.
         let bottom = visible.y.saturating_add(visible.height);
-        let divider_height = u16::from(visible.height > 0);
-        return Layout {
-            state: InputState::AwaitingFit,
-            conversation: SurfaceRect {
-                height: visible.height - divider_height,
-                ..visible
-            },
-            divider: SurfaceRect {
-                y: bottom - divider_height,
-                height: divider_height,
-                ..visible
-            },
-            input: SurfaceRect {
-                y: bottom,
-                height: 0,
-                ..visible
-            },
-        };
+        return Layout::split(InputState::AwaitingFit, visible, bottom);
     }
     let bottom = rect.y.saturating_add(rect.height);
     let mut top = bottom.saturating_sub(size.rows(rect.height, blocked));
@@ -117,28 +100,37 @@ fn layout(
     }) {
         top = top.min(cursor.y.saturating_sub(1).max(rect.y));
     }
-    let divider_y = top.saturating_sub(1).max(rect.y);
-    let divider_height = u16::from(top > rect.y);
-    Layout {
-        state: if blocked {
-            InputState::Blocked
-        } else {
-            InputState::Ready
-        },
-        conversation: SurfaceRect {
-            height: divider_y - rect.y,
-            ..rect
-        },
-        divider: SurfaceRect {
-            y: divider_y,
-            height: divider_height,
-            ..rect
-        },
-        input: SurfaceRect {
-            y: top,
-            height: bottom - top,
-            ..rect
-        },
+    let state = if blocked {
+        InputState::Blocked
+    } else {
+        InputState::Ready
+    };
+    Layout::split(state, rect, top)
+}
+
+impl Layout {
+    /// `rect` split at row `top`: the conversation above, then a one-row
+    /// divider when there is room for one, then the editor to the bottom.
+    fn split(state: InputState, rect: SurfaceRect, top: u16) -> Self {
+        let bottom = rect.y.saturating_add(rect.height);
+        let line = u16::from(top > rect.y);
+        Self {
+            state,
+            conversation: SurfaceRect {
+                height: top - line - rect.y,
+                ..rect
+            },
+            divider: SurfaceRect {
+                y: top - line,
+                height: line,
+                ..rect
+            },
+            input: SurfaceRect {
+                y: top,
+                height: bottom - top,
+                ..rect
+            },
+        }
     }
 }
 

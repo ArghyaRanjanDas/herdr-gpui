@@ -4,12 +4,13 @@ use super::{Caret, Cell, Key, Position, Region};
 use crate::{
     chat::{
         prepared::{Body, MESSAGE, Part, folded_thought, notice_label, tool_header, tool_text},
-        rich::{Block, CodeText, Inline, Kind, MAX_CODE_LINES},
+        rich::{Block, CodeText, Inline, Kind, MAX_CODE_LINES, remote_content},
     },
     release_notes::Line,
 };
 use herdr_chat_protocol::{Entry, EntryId, EntryKind, Transcript};
 use std::{
+    borrow::Cow,
     collections::{HashMap, HashSet},
     ops::Range,
     rc::Rc,
@@ -483,24 +484,16 @@ impl Builder {
     }
 
     fn inline(&mut self, position: Position, content: &[Inline], separator: &'static str) {
+        let content = if self.remote {
+            remote_content(content)
+        } else {
+            Cow::Borrowed(content)
+        };
         let mut text = String::new();
         let mut atoms = Vec::new();
-        for (index, inline) in content.iter().enumerate() {
+        for inline in content.iter() {
             match inline {
-                Inline::Text(value, style) => {
-                    text.push_str(value);
-                    if self.remote
-                        && let Some(target) = style
-                            .link
-                            .as_deref()
-                            .filter(|url| crate::terminal::file_target(url).is_some())
-                        && !matches!(content.get(index + 1), Some(Inline::Text(_, next)) if next.link.as_deref() == Some(target))
-                    {
-                        text.push_str(" (");
-                        text.push_str(target);
-                        text.push(')');
-                    }
-                }
+                Inline::Text(value, _) => text.push_str(value),
                 Inline::Math { source, .. } => {
                     let start = text.len();
                     text.push_str(source);

@@ -156,7 +156,7 @@ impl HerdrWindow {
                 .items_center()
                 .justify_center()
                 .bg(rgb(theme.surface))
-                .text_size(px((self.chat_text_size() - 1.).max(10.)))
+                .text_size(self.chat_small_text())
                 .text_color(rgb(theme.muted))
                 .child(match frame {
                     Frame::Diagram => "Drawing diagram\u{2026}",
@@ -165,7 +165,7 @@ impl HerdrWindow {
             Shown::Failed(error) => boxed
                 .px(px(8.))
                 .py(px(4.))
-                .text_size(px((self.chat_text_size() - 1.).max(10.)))
+                .text_size(self.chat_small_text())
                 .text_color(rgb(theme.muted))
                 .child(format!("[image] {error}")),
         }

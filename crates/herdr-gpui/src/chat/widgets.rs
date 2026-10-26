@@ -5,7 +5,7 @@
 mod error;
 mod state;
 pub(crate) use error::Error;
-pub(crate) use state::{Form, Input, State, bounded_input};
+pub(crate) use state::{Form, Input, Key, State, bounded_input};
 
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, rc::Rc};
@@ -161,7 +161,13 @@ impl Component {
         }
     }
 
+    /// Whether the component is drawable, with a default value its own
+    /// control would accept as an edit.
     fn valid(&self) -> bool {
+        self.well_formed() && self.field().is_none_or(|(_, value)| self.accepts(&value))
+    }
+
+    fn well_formed(&self) -> bool {
         match self {
             Self::Action { label, prompt, .. } => {
                 text(label, MAX_LABEL)
@@ -176,12 +182,7 @@ impl Component {
                 value,
                 detail,
             } => text(label, MAX_LABEL) && text(value, MAX_METRIC) && text(detail, MAX_DETAIL),
-            Self::Choice {
-                label,
-                options,
-                value,
-                ..
-            } => {
+            Self::Choice { label, options, .. } => {
                 text(label, MAX_LABEL)
                     && (1..=MAX_CHOICES).contains(&options.len())
                     && options
@@ -192,37 +193,26 @@ impl Component {
                         .collect::<std::collections::HashSet<_>>()
                         .len()
                         == options.len()
-                    && options.contains(value)
             }
             Self::Toggle { label, .. } => text(label, MAX_LABEL),
             Self::Input {
-                label,
-                placeholder,
-                value,
-                ..
-            } => {
-                text(label, MAX_LABEL)
-                    && text(placeholder, MAX_LABEL)
-                    && text(value, MAX_INPUT)
-                    && !value.contains('\n')
-            }
+                label, placeholder, ..
+            } => text(label, MAX_LABEL) && text(placeholder, MAX_LABEL),
             Self::Slider {
                 label,
                 min,
                 max,
                 step,
-                value,
                 ..
             } => {
                 text(label, MAX_LABEL)
-                    && [min, max, step, value]
+                    && [min, max, step]
                         .iter()
                         .all(|n| n.is_finite() && n.abs() <= MAX_NUMBER)
                     && max > min
                     && *step > 0.
                     && *step <= max - min
                     && (max - min) / step <= MAX_STEPS
-                    && (min..=max).contains(&value)
             }
             Self::Table { columns, rows } => {
                 (1..=MAX_COLUMNS).contains(&columns.len())

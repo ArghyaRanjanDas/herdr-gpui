@@ -373,3 +373,24 @@ esac
         assert_eq!(result[0].herdr_session.as_deref(), Some("test-session"));
     }
 }
+
+#[test]
+fn a_host_that_keeps_failing_is_probed_at_the_settled_rate() {
+    let candidates = ["w1:p1".to_owned()];
+    let now = Instant::now();
+    let mut state = Existing {
+        scope: Some(scope()),
+        candidates: candidates.to_vec(),
+        ..Default::default()
+    };
+    let mut waits = Vec::new();
+    for _ in 0..6 {
+        state.probe = Some(answered(Err(Error::Stopped)));
+        state.poll(Some(scope()), &candidates, 0, now);
+        waits.push(state.interval);
+        state.probe = None;
+    }
+    assert_eq!(waits[0], REFRESH, "one failure retries promptly");
+    assert!(waits.windows(2).all(|pair| pair[0] <= pair[1]));
+    assert_eq!(waits.last(), Some(&SETTLED));
+}

@@ -2,6 +2,7 @@ use super::*;
 use crate::chat::prepared::{Body, DiffSummary, Part, Prepared, diff_counts, summarize};
 use herdr_chat_protocol::{Tool, ToolContent, ToolKind, ToolStatus};
 
+mod cut;
 mod fences;
 
 #[test]

@@ -117,8 +117,7 @@ impl HerdrWindow {
             changed |= pane.session.set_observed_status(status);
         }
         self.prepare_chat_visuals(window, cx);
-        let mut font = self.config.ui.clone();
-        font.size = self.chat_text_size();
+        let font = self.chat_font();
         let theme = self.theme.clone();
         for pane in self.chats.panes_mut() {
             if !pane.available() {
@@ -206,8 +205,7 @@ impl HerdrWindow {
         for page in self.chats.take_closed_pages() {
             self.close_chat_page(page);
         }
-        let mut font = self.config.ui.clone();
-        font.size = self.chat_text_size();
+        let font = self.chat_font();
         let style = DiagramStyle::of(&self.theme, &font);
         let renderer = cx.svg_renderer();
         for pane in self.chats.panes_mut() {
@@ -262,19 +260,10 @@ impl HerdrWindow {
             return None;
         }
         let pane = self.chats.pane(pane_id)?;
-        if let Some(focus) = &pane.text_focus
-            && focus.is_focused(window)
-        {
-            return Some(focus.clone());
+        if pane.reading(window) {
+            return pane.text_focus.clone();
         }
-        match pane.input() {
-            ChatInput::Composer => pane
-                .composer
-                .as_ref()
-                .map(|input| input.read(cx).focus.clone()),
-            ChatInput::ReadOnly => pane.read_only_focus.clone(),
-            ChatInput::Terminal => None,
-        }
+        pane.input_focus(cx)
     }
 
     /// A visible chat owns the keyboard through its composer or inert mirror
@@ -282,11 +271,7 @@ impl HerdrWindow {
     fn follow_chat_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let target = self.focused_chat_handle(window, cx);
         let holding = self.chats.panes().find_map(|pane| {
-            pane.composer
-                .iter()
-                .map(|input| input.read(cx).focus.clone())
-                .chain(pane.read_only_focus.iter().cloned())
-                .chain(pane.text_focus.iter().cloned())
+            pane.focus_handles(cx)
                 .find(|focus| focus.is_focused(window))
         });
         match (holding, target) {
@@ -309,19 +294,12 @@ impl HerdrWindow {
     /// on a keystroke bubbling out of the overlay or one of its fields.
     pub(crate) fn chat_focused(&self, window: &Window, cx: &App) -> bool {
         self.chats.panes().any(|pane| {
-            pane.composer
-                .iter()
-                .chain(pane.menu_search.as_ref().map(|(search, _)| search))
-                .any(|input| input.read(cx).focus.is_focused(window))
+            pane.focus_handles(cx).any(|focus| focus.is_focused(window))
                 || pane
-                    .read_only_focus
+                    .menu_search
                     .as_ref()
-                    .is_some_and(|focus| focus.is_focused(window))
+                    .is_some_and(|(search, _)| search.read(cx).focus.is_focused(window))
                 || pane.widgets.focused(window, cx)
-                || pane
-                    .text_focus
-                    .as_ref()
-                    .is_some_and(|focus| focus.is_focused(window))
         })
     }
 
@@ -620,8 +598,7 @@ impl HerdrWindow {
         if self.chats.pane(pane_id).is_some_and(|pane| {
             pane.input() == ChatInput::ReadOnly
                 && pane
-                    .read_only_focus
-                    .as_ref()
+                    .input_focus(cx)
                     .is_some_and(|focus| focus.is_focused(window))
         }) {
             return true;

@@ -24,14 +24,19 @@ impl HerdrWindow {
         ))
     }
 
-    pub(super) fn render_chat_plain_text(
+    /// One selectable run of an entry's plain text, at `cell` of `region`.
+    /// It is drawn plain when the selection document holds other text there.
+    pub(super) fn render_chat_text(
         &self,
-        scope: Option<Scope<'_>>,
+        pane_id: &str,
+        entry: EntryId,
+        region: Region,
         cell: Cell,
         text: impl Into<SharedString>,
         cx: &mut Context<Self>,
     ) -> Div {
         let text = text.into();
+        let scope = self.chat_text_scope(pane_id, entry, region);
         let Some(fragment) = scope.and_then(|scope| {
             (scope.text(cell) == Some(text.as_ref()))
                 .then(|| scope.fragment(cell))

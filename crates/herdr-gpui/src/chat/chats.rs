@@ -9,7 +9,7 @@ use super::{
     session::Session,
 };
 use crate::search_input::SearchInput;
-use gpui::{Entity, FocusHandle, ListAlignment, ListState, px};
+use gpui::{App, Entity, FocusHandle, ListAlignment, ListState, Window, px};
 use herdr_chat_protocol::{ClientMessage, Command, Cursor, EndpointId, EntryId};
 use std::{
     collections::HashSet,
@@ -158,13 +158,53 @@ pub(crate) struct ChatPane {
 }
 
 impl ChatPane {
+    /// Whether a callback made for `target` at `cursor` still applies: the
+    /// same binding and the same transcript epoch, not a replacement session.
+    pub(crate) fn is_current(&self, target: &Target, cursor: Option<Cursor>) -> bool {
+        self.target == *target
+            && self.session.since().map(|cursor| cursor.epoch) == cursor.map(|cursor| cursor.epoch)
+    }
+
+    /// The handle that takes the chat's typing; its original terminal takes
+    /// it instead for an observed agent.
+    pub(crate) fn input_focus(&self, cx: &App) -> Option<FocusHandle> {
+        match self.input() {
+            ChatInput::Composer => self
+                .composer
+                .as_ref()
+                .map(|input| input.read(cx).focus.clone()),
+            ChatInput::ReadOnly => self.read_only_focus.clone(),
+            ChatInput::Terminal => None,
+        }
+    }
+
+    /// Every handle through which the chat holds the keyboard: its composer,
+    /// its inert mirror focus, and its selectable text.
+    pub(crate) fn focus_handles<'a>(
+        &'a self,
+        cx: &'a App,
+    ) -> impl Iterator<Item = FocusHandle> + 'a {
+        self.composer
+            .iter()
+            .map(|input| input.read(cx).focus.clone())
+            .chain(self.read_only_focus.iter().cloned())
+            .chain(self.text_focus.iter().cloned())
+    }
+
+    /// Whether the user is reading, with the keyboard on the chat's text.
+    pub(crate) fn reading(&self, window: &Window) -> bool {
+        self.text_focus
+            .as_ref()
+            .is_some_and(|focus| focus.is_focused(window))
+    }
+
     fn new(target: Target) -> Self {
         // `glide` follows the end rather than the list's own tail mode,
         // which jumps there with each chunk.
         let list = ListState::new(0, ListAlignment::Top, px(OVERDRAW));
         let glide = super::glide::Glide::new(&list);
         let mut prepared = Prepared::default();
-        prepared.set_remote_links(!matches!(target.route, super::Route::Local));
+        prepared.set_remote_links(!target.is_local());
         Self {
             attachments: Vec::new(),
             completion: 0,
@@ -334,11 +374,9 @@ impl ChatPane {
                 }
             }
         }
-        self.prepared.set_expanded(&self.expanded);
-        self.prepared.update(self.session.transcript(), &keys);
-        self.selection.validate(self.prepared.text());
-        self.widgets.retain(&self.prepared);
         self.list_keys = keys;
+        self.refresh_text();
+        self.widgets.retain(&self.prepared);
     }
 
     /// Redraws one entry, such as a thought folding open.
@@ -368,8 +406,9 @@ impl ChatPane {
         self.remeasure(id);
     }
 
-    /// Folding a card changes what can be selected without changing the
-    /// transcript. Reproject only entries whose visible content changed.
+    /// Reprojects the selectable text after the transcript changes, or after
+    /// folding a card changes what can be selected without changing it. Only
+    /// entries whose visible content changed are reprojected.
     pub(crate) fn refresh_text(&mut self) {
         self.prepared.set_expanded(&self.expanded);
         self.prepared
@@ -459,10 +498,7 @@ impl Chats {
             })?;
         pane.session
             .receive(herdr_chat_protocol::ServerMessage::Snapshot {
-                cursor: Cursor {
-                    epoch: uuid::Uuid::new_v4(),
-                    seq: 0,
-                },
+                cursor: Cursor::new_epoch(),
                 transcript: Box::new(transcript),
             })?;
         pane.sync_view();

@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::{
-    chat::{Route, Target},
+    chat::{Target, rich::remote_content},
     terminal::{PaneLink, RowLink, file_target},
 };
 use herdr_chat_protocol::Cursor;
@@ -26,8 +26,7 @@ impl Links {
             target: pane.map(|pane| pane.target.clone()),
             cursor: pane.and_then(|pane| pane.session.since()),
             selection_epoch: view.selection_epoch,
-            local: !view.selected_is_remote()
-                && pane.is_some_and(|pane| pane.target.route == Route::Local),
+            local: pane.is_some_and(|pane| pane.target.is_local()),
         }
     }
 
@@ -51,11 +50,10 @@ impl Links {
             return;
         };
         let _ = self.view.update(cx, |view, cx| {
-            let current = view.chats.pane(&target.pane_id).is_some_and(|pane| {
-                pane.target == *target
-                    && pane.session.since().map(|cursor| cursor.epoch)
-                        == self.cursor.map(|cursor| cursor.epoch)
-            });
+            let current = view
+                .chats
+                .pane(&target.pane_id)
+                .is_some_and(|pane| pane.is_current(target, self.cursor));
             if !current || view.selected_is_remote() || view.selection_epoch != self.selection_epoch
             {
                 return;
@@ -77,41 +75,6 @@ impl Links {
             );
         });
     }
-}
-
-fn remote_content(content: &[Inline]) -> Cow<'_, [Inline]> {
-    if !content.iter().any(|part| {
-        matches!(part, Inline::Text(_, style)
-            if style.link.as_deref().is_some_and(|url| file_target(url).is_some()))
-    }) {
-        return Cow::Borrowed(content);
-    }
-    let mut shown = Vec::new();
-    for (index, part) in content.iter().enumerate() {
-        let Inline::Text(text, style) = part else {
-            shown.push(part.clone());
-            continue;
-        };
-        let Some(target) = style
-            .link
-            .as_deref()
-            .filter(|url| file_target(url).is_some())
-        else {
-            shown.push(part.clone());
-            continue;
-        };
-        let mut inert = style.clone();
-        inert.link = None;
-        shown.push(Inline::Text(text.clone(), inert));
-        // Emphasis/code can split one label into several styled text spans.
-        // Keep their formatting, then show its destination once at the end.
-        if !matches!(content.get(index + 1), Some(Inline::Text(_, next))
-            if next.link.as_deref() == Some(target))
-        {
-            shown.push(Inline::Text(format!(" ({target})"), Style::default()));
-        }
-    }
-    Cow::Owned(shown)
 }
 
 #[cfg(test)]

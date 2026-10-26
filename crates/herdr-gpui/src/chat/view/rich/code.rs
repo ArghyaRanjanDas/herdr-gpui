@@ -16,8 +16,10 @@ impl HerdrWindow {
         context: &mut RichContext<'_, '_, '_>,
     ) -> Div {
         let spans = context.visuals.code(id);
-        let lines: Vec<_> = source
-            .lines()
+        // One pass: the lines past the limit are only checked for, not counted.
+        let mut raw = source.lines();
+        let lines: Vec<_> = raw
+            .by_ref()
             .take(MAX_CODE_LINES)
             .enumerate()
             .map(|(index, raw)| {
@@ -38,8 +40,7 @@ impl HerdrWindow {
                 }
             })
             .collect();
-        let truncated =
-            source.lines().count() > MAX_CODE_LINES || lines.iter().any(|line| line.truncated);
+        let truncated = raw.next().is_some() || lines.iter().any(|line| line.truncated);
         div()
             .debug_selector(|| "chat-code-block".into())
             .min_w_0()
@@ -103,10 +104,7 @@ impl HerdrWindow {
                             row: index,
                             column: 0,
                         });
-                        let styled = match &fragment {
-                            Some(fragment) => fragment.styled(line.text, marks, &self.theme),
-                            None => StyledText::new(line.text).with_highlights(marks),
-                        };
+                        let styled = styled_text(fragment.as_ref(), line.text, marks, &self.theme);
                         let layout = styled.layout().clone();
                         let view = div()
                             .debug_selector(move || format!("chat-code-line-{index}"))
@@ -114,10 +112,7 @@ impl HerdrWindow {
                             .whitespace_nowrap()
                             .min_h(px(self.config.terminal.size * 1.5))
                             .child(styled);
-                        match fragment {
-                            Some(fragment) => fragment.wrap(view, layout, context.cx),
-                            None => view,
-                        }
+                        selectable(fragment.as_ref(), view, layout, context.cx)
                     })),
             )
             .when(truncated, |view| {

@@ -22,7 +22,7 @@ impl HerdrWindow {
         cx: &mut Context<Self>,
     ) -> Div {
         let theme = &self.theme;
-        let small = px((self.chat_text_size() - 1.).max(10.));
+        let small = self.chat_small_text();
         let id = entry.id;
         let card = div()
             .id(("chat-summary", id.0))
@@ -67,8 +67,10 @@ impl HerdrWindow {
                     ))
                 } else {
                     card.child(div().min_w_0().truncate().text_size(small).child(
-                        self.render_chat_plain_text(
-                            self.chat_text_scope(pane_id, entry.id, Region::Body(0)),
+                        self.render_chat_text(
+                            pane_id,
+                            entry.id,
+                            Region::Body(0),
                             Cell::default(),
                             summary.gist.clone(),
                             cx,
