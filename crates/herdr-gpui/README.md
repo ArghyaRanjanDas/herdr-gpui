@@ -4076,7 +4076,8 @@ Ctrl+Shift+U is left unbound for
   **Projects**, or cycle filters with Ctrl-Tab / Ctrl-Shift-Tab (or Alt-] /
   Alt-[) without clearing the search. Search is fzf's: every space-separated
   term must match, and `'exact`, `^prefix`, `suffix$`, and `!negate` apply per
-  term; host, workspace, path, status, and command ID are searchable context.
+  term; host, workspace, path, status, command ID, and an agent's titles and
+  pane name are searchable context.
   Rows chosen often and recently rise among the matches for a typed query, and
   the Projects filter lists the most frecent projects first before anything is
   typed; that history stays on this machine in `palette-frecency.json`.
