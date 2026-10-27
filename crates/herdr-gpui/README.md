@@ -2352,15 +2352,27 @@ prompt profiles from `~/.config/agent-launcher/agents/<name>/prompt.md` (the
 built-in prompt when none is chosen). GitHub is read as the account used
 for pull requests on that host. A GitLab remote, on gitlab.com or a
 self-managed host, lists its open issues (not yet its merge requests), read
-with `GITLAB_TOKEN` or `GITLAB_ACCESS_TOKEN` when `GITLAB_HOST` names that host
-(gitlab.com by default), else with the GitLab CLI's sign-in (`glab auth
-login`), and sent only over HTTPS; public projects need neither, and an
-`http://` remote is read without one. A remote on an SSH host of its own, such
-as `git@gitlab-ssh.example.com:group/project.git` for an instance served at
-`gitlab.example.com`, is read from the instance whose `ssh_host` the GitLab
-CLI's config names it, at that instance's `api_host` and `api_protocol`, with
-its token (`glab config set ssh_host gitlab-ssh.example.com --host
-gitlab.example.com`). GitHub Enterprise is listed as not
+with the `GITLAB_TOKEN` or `GITLAB_ACCESS_TOKEN` the checkout's `.envrc` sets
+(loaded through direnv, for a checkout on this computer whose `.envrc` you
+allowed), else with your login shell's when `GITLAB_HOST` names that instance
+(gitlab.com by default), else with the account connected or the token pasted
+in the account menu, else
+with the GitLab CLI's sign-in (`glab auth login`), and sent only over HTTPS;
+public projects need none, and an `http://` remote is read without one. The
+account button at the top right of the title bar switches between GitHub and
+GitLab: the GitLab side lists each instance with where its token comes from
+and whom it signs in as. **Connect** signs in through GitLab in the browser
+with a one-time code, as GitHub's sign-in does (gitlab.com out of the box; a
+self-managed instance once `[gitlab] applications` names its OAuth
+application), and the page also checks a pasted personal access token (scope
+`read_api`) before saving it in the credential store. When GitLab needs a
+token, the button shows a dot and the source shows "sign in", which opens that
+page. A remote on an SSH host
+of its own, such as `git@gitlab-ssh.example.com:group/project.git` for an
+instance served at `gitlab.example.com`, is read from the instance whose
+`ssh_host` the GitLab CLI's config names it, at that instance's `api_host` and
+`api_protocol`, with its token (`glab config set ssh_host
+gitlab-ssh.example.com --host gitlab.example.com`). GitHub Enterprise is listed as not
 supported yet. The window button in the tab's header moves the view into
 a window of its own.
 
