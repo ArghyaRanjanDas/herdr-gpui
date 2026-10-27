@@ -34,13 +34,24 @@ pub(crate) struct PairingDialog {
     _task: Option<Task<()>>,
 }
 
-impl Drop for PairingDialog {
-    fn drop(&mut self) {
-        if let (Some(client), Some(id)) = (&self.client, self.pairing.id())
+impl PairingDialog {
+    /// Cancels a pairing still open at the daemon, as closing the dialog
+    /// does. The dialog may still be drawn as it goes; it asks nothing more,
+    /// and no longer keeps the daemon polled at the open dialog's pace.
+    pub(crate) fn close(&mut self) {
+        self._lease = None;
+        self._task = None;
+        if let (Some(client), Some(id)) = (self.client.take(), self.pairing.id())
             && self.pairing.cancels_on_close()
         {
             client.notify(Request::CancelPairing { id: id.clone() });
         }
+    }
+}
+
+impl Drop for PairingDialog {
+    fn drop(&mut self) {
+        self.close();
     }
 }
 
@@ -164,9 +175,10 @@ impl HerdrWindow {
             Phase::Claimed {
                 device_name,
                 code,
+                app,
                 answer,
                 ..
-            } => self.pairing_claim(device_name, code, *answer, cx),
+            } => self.pairing_claim(device_name, code, app.as_deref(), *answer, cx),
             Phase::Approved { device_name } => self.pairing_message(
                 &format!("{} can now control your chats.", name(device_name)),
                 "Revoke it any time in Settings > Remote control.",
@@ -307,6 +319,7 @@ impl HerdrWindow {
         &self,
         device_name: &str,
         code: &str,
+        app: Option<&str>,
         answer: Option<Answer>,
         cx: &mut Context<Self>,
     ) -> Div {
@@ -330,6 +343,19 @@ impl HerdrWindow {
                     )
                     .child("wants remote control of your chats."),
             )
+            // Approving admits this origin to the daemon's API, so the user
+            // sees which app asked: one installed from another computer.
+            .when_some(app, |claim, app| {
+                claim.child(
+                    div()
+                        .debug_selector(|| "remote-pair-app".into())
+                        .text_color(rgb(theme.subtext()))
+                        .child(format!(
+                            "It asks from the Herdr app at {}. Allow it only if you are adding this computer to that app.",
+                            crate::notifications::safe_text(app, 255)
+                        )),
+                )
+            })
             .child(
                 div()
                     .text_color(rgb(theme.subtext()))

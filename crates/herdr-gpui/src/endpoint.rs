@@ -738,9 +738,7 @@ impl HerdrWindow {
             self.pending_releases.clear();
         }
         self.selected_endpoint = index;
-        if self.device_filter.is_some() {
-            self.device_filter = Some(id.to_owned());
-        }
+        self.device_filter.follow(id);
         self.reset_selected(cx);
         // The picture kept for an outage is the previous endpoint's.
         self.presentation.clear();

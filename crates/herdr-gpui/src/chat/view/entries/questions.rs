@@ -38,8 +38,10 @@ impl HerdrWindow {
             .child(
                 div()
                     .font_weight(FontWeight::SEMIBOLD)
-                    .child(self.render_chat_plain_text(
-                        self.chat_text_scope(pane_id, entry.id, Region::Label),
+                    .child(self.render_chat_text(
+                        pane_id,
+                        entry.id,
+                        Region::Label,
                         Cell::default(),
                         notice_label(label),
                         cx,

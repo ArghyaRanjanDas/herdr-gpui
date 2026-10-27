@@ -73,8 +73,10 @@ impl HerdrWindow {
             language.eq_ignore_ascii_case("diff") || language.eq_ignore_ascii_case("patch");
         let diff_rows = is_diff.then(|| diff::rows(source, limit));
         let spans = visuals.code(id);
-        let lines: Vec<_> = source
-            .lines()
+        // One pass: the lines past the limit are only checked for, not counted.
+        let mut raw = source.lines();
+        let lines: Vec<_> = raw
+            .by_ref()
             .take(limit)
             .enumerate()
             .map(|(index, raw)| {
@@ -96,8 +98,7 @@ impl HerdrWindow {
                 }
             })
             .collect();
-        let truncated = source.lines().take(limit + 1).count() > limit
-            || lines.iter().any(|line| line.truncated);
+        let truncated = raw.next().is_some() || lines.iter().any(|line| line.truncated);
         div()
             .debug_selector(|| "chat-code-block".into())
             .min_w_0()
@@ -185,10 +186,7 @@ impl HerdrWindow {
                                 column: 0,
                             })
                         });
-                        let styled = match &fragment {
-                            Some(fragment) => fragment.styled(line.text, marks, &self.theme),
-                            None => StyledText::new(line.text).with_highlights(marks),
-                        };
+                        let styled = styled_text(fragment.as_ref(), line.text, marks, &self.theme);
                         let layout = styled.layout().clone();
                         let view = div()
                             .debug_selector(move || format!("chat-code-line-{index}"))
@@ -200,10 +198,7 @@ impl HerdrWindow {
                             .text_color(rgb(ink))
                             .when(is_diff, |row| row.px(px(6.)))
                             .child(styled);
-                        match fragment {
-                            Some(fragment) => fragment.wrap(view, layout, cx),
-                            None => view,
-                        }
+                        selectable(fragment.as_ref(), view, layout, cx)
                     })),
             )
             .when(truncated, |view| {

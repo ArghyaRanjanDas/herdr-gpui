@@ -5,10 +5,11 @@
 use super::{Error, Result};
 use crate::{
     cli::ObserveOptions,
-    mirror::transcript::{Source, TranscriptAgent},
+    mirror::transcript::{Source, TranscriptAgent, codex_session},
 };
 use serde_json::Value;
 use std::{
+    collections::BTreeSet,
     fs::{self, File},
     io::{self, BufRead, BufReader, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
@@ -49,14 +50,16 @@ impl Identity {
             return Err(Error::ProcessChanged);
         }
         let cwd = fs::read_link(process.join("cwd")).ok();
-        let mut candidates = Vec::new();
+        // A path the process opened twice, or that a search finds again, is
+        // still one candidate.
+        let mut candidates = BTreeSet::new();
         if let Ok(entries) = fs::read_dir(process.join("fd")) {
             for entry in entries.take(MAX_FDS).flatten() {
                 let Ok(path) = fs::read_link(entry.path()) else {
                     continue;
                 };
-                if candidate_name(&path, options) && !candidates.contains(&path) {
-                    candidates.push(path);
+                if candidate_name(&path, options) {
+                    candidates.insert(path);
                 }
             }
         }
@@ -71,8 +74,8 @@ impl Identity {
                     continue;
                 }
                 let path = project.path().join(format!("{}.jsonl", options.session));
-                if path.is_file() && !candidates.contains(&path) {
-                    candidates.push(path);
+                if path.is_file() {
+                    candidates.insert(path);
                 }
             }
         }
@@ -80,7 +83,7 @@ impl Identity {
         // Its UUIDv7 bounds the lookup to three date directories; the exact
         // filename and header still have to identify the advertised thread.
         if options.agent == TranscriptAgent::Codex && candidates.is_empty() {
-            candidates = codex_rollouts(&process, home, options)?;
+            candidates.extend(codex_rollouts(&process, home, options)?);
         }
         let matches: Vec<_> = candidates
             .into_iter()
@@ -104,6 +107,12 @@ impl Identity {
         if !self.process_matches()? {
             return Err(Error::Exited);
         }
+        self.check_file()
+    }
+
+    /// The pinned file is still the one at the path and still names the
+    /// original session; [`Self::check`] without the process.
+    pub(super) fn check_file(&self) -> Result<()> {
         #[cfg(unix)]
         {
             use std::os::unix::fs::MetadataExt;
@@ -271,10 +280,9 @@ fn matches_file(mut file: File, agent: TranscriptAgent, session: &str) -> io::Re
             continue;
         };
         let id = match agent {
-            TranscriptAgent::Codex if record["type"] == "session_meta" => record["payload"]
-                .get("id")
-                .or_else(|| record["payload"].get("session_id"))
-                .and_then(Value::as_str),
+            TranscriptAgent::Codex if record["type"] == "session_meta" => {
+                codex_session(&record["payload"])
+            }
             TranscriptAgent::Claude => record.get("sessionId").and_then(Value::as_str),
             TranscriptAgent::Codex => None,
         };

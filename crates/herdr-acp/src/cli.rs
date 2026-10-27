@@ -2,6 +2,7 @@
 
 use std::{
     ffi::{OsStr, OsString},
+    num::{NonZeroU32, NonZeroU64},
     path::PathBuf,
 };
 
@@ -145,31 +146,35 @@ Keys:
 
 pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Parsed, Error> {
     let mut args = args.into_iter().peekable();
-    if args.peek().and_then(|arg| arg.to_str()) == Some("observe") {
-        args.next();
-        return observe(args);
-    }
-    if args.peek().and_then(|arg| arg.to_str()) == Some("mirror") {
-        args.next();
-        return mirror(args);
-    }
-    if args.peek().and_then(|arg| arg.to_str()) == Some("agents") {
-        args.next();
-        return match args.next() {
-            Some(extra) => Err(Error::UnknownOption(extra)),
-            None => Ok(Parsed::Agents),
-        };
-    }
-    if args.peek().and_then(|arg| arg.to_str()) == Some("connect") {
-        args.next();
-        let id = utf8(args.next(), "connect").map_err(|_| Error::MissingEndpoint)?;
-        if let Some(extra) = args.next() {
-            return Err(Error::UnknownOption(extra));
+    // A subcommand word is consumed before its own arguments are parsed.
+    match args.peek().and_then(|arg| arg.to_str()) {
+        Some("agents") => {
+            args.next();
+            return match args.next() {
+                Some(extra) => Err(Error::UnknownOption(extra)),
+                None => Ok(Parsed::Agents),
+            };
         }
-        return id
-            .parse()
-            .map(Parsed::Connect)
-            .map_err(|_| Error::InvalidEndpoint(id));
+        Some("connect") => {
+            args.next();
+            let id = utf8(args.next(), "connect").map_err(|_| Error::MissingEndpoint)?;
+            if let Some(extra) = args.next() {
+                return Err(Error::UnknownOption(extra));
+            }
+            return id
+                .parse()
+                .map(Parsed::Connect)
+                .map_err(|_| Error::InvalidEndpoint(id));
+        }
+        Some("mirror") => {
+            args.next();
+            return mirror(args);
+        }
+        Some("observe") => {
+            args.next();
+            return observe(args);
+        }
+        _ => {}
     }
     let mut options = Options {
         adapter: false,
@@ -278,15 +283,13 @@ fn observe(args: impl Iterator<Item = OsString>) -> Result<Parsed, Error> {
     let session = utf8(args.next(), "observe SESSION_ID")?;
     uuid::Uuid::parse_str(&session).map_err(|_| Error::ObserveIdentity)?;
     let pid = utf8(args.next(), "observe PID")?
-        .parse::<u32>()
-        .ok()
-        .filter(|pid| *pid > 0)
-        .ok_or(Error::ObserveIdentity)?;
+        .parse::<NonZeroU32>()
+        .map_err(|_| Error::ObserveIdentity)?
+        .get();
     let started = utf8(args.next(), "observe START_TICKS")?
-        .parse::<u64>()
-        .ok()
-        .filter(|ticks| *ticks > 0)
-        .ok_or(Error::ObserveIdentity)?;
+        .parse::<NonZeroU64>()
+        .map_err(|_| Error::ObserveIdentity)?
+        .get();
     let mut pane = None;
     while let Some(arg) = args.next() {
         match arg.to_str() {

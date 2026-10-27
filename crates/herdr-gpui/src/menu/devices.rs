@@ -1,5 +1,5 @@
 //! The sidebar's device footer and the device picker that scopes the sidebar
-//! to one device or opens the Add Device dialog. Device scope is presentation
+//! to one device, several, or all of them, or opens the Add Device dialog. Device scope is presentation
 //! state; connection ownership stays in `endpoint`.
 mod activity_card;
 mod add_device;
@@ -15,12 +15,14 @@ mod host_menu;
 mod local_network;
 pub(super) mod rail;
 mod saved_warning;
+mod scope;
 mod setup;
 mod wsl;
 
 pub(super) use add_device::Setup;
 pub(crate) use error::Error;
 pub(crate) use host_menu::HostMenu;
+pub(crate) use scope::DeviceScope;
 pub(super) use wsl::WslSetup;
 
 use super::{Page, colors};
@@ -30,6 +32,13 @@ use herdr_client::ConnectTarget;
 use rail::add_device_offer;
 
 pub(super) const MENU_GAP: f32 = 12.;
+
+/// How the picker says several devices can be listed at once.
+const MULTI_SELECT_HINT: &str = if cfg!(target_os = "macos") {
+    "⌘-click or Space for several"
+} else {
+    "Ctrl-click or Space for several"
+};
 pub(super) const MENU_WIDTH: f32 = 280.;
 
 /// How tall an anchored list above the sidebar footer may be, measured from the
@@ -181,9 +190,21 @@ impl HerdrWindow {
     }
 
     pub(crate) fn device_visible(&self, id: &str) -> bool {
-        self.device_filter
-            .as_deref()
-            .is_none_or(|filter| filter == id)
+        self.device_filter.shows(id)
+    }
+
+    /// Lists `scope`'s devices in the sidebar, from the top: the rows a scroll
+    /// or reveal kept belong to the old list.
+    pub(super) fn set_device_scope(&mut self, scope: DeviceScope) {
+        self.device_filter = scope;
+        for scroll in &self.sidebar_scroll {
+            scroll.set_offset(Point::default());
+        }
+        for revealed in &self.sidebar_revealed {
+            revealed.set(None);
+        }
+        // The row a reveal left for the next frame is in the old list.
+        self.sidebar_pin_reveal.set(None);
     }
 
     pub(crate) fn device_setup_unavailable(&self) -> Option<&'static str> {
@@ -240,11 +261,16 @@ impl HerdrWindow {
             .into();
         let foreground = self.theme.foreground;
         let surface = self.theme.surface;
-        let label = self
-            .device_filter
-            .as_ref()
-            .and_then(|id| self.endpoints.iter().find(|endpoint| &endpoint.id == id))
-            .map_or("All Devices", |endpoint| endpoint.label.as_str());
+        let picked = self.device_filter.picked().count();
+        let label = match self.device_filter.picked().next() {
+            Some(id) if picked == 1 => self
+                .endpoints
+                .iter()
+                .find(|endpoint| endpoint.id == id)
+                .map_or_else(|| "All Devices".to_owned(), |e| e.label.clone()),
+            Some(_) => format!("{picked} Devices"),
+            None => "All Devices".to_owned(),
+        };
         let connected = self.endpoints.iter().any(|endpoint| {
             self.device_visible(&endpoint.id) && endpoint.live.status.is_connected()
         });
@@ -489,7 +515,7 @@ impl HerdrWindow {
                 "{count} {} · {connected} connected",
                 if count == 1 { "device" } else { "devices" }
             ),
-            self.device_filter.is_none(),
+            self.device_filter == DeviceScope::All,
             true,
         )];
         rows.extend(self.endpoints.iter().map(|endpoint| {
@@ -510,7 +536,7 @@ impl HerdrWindow {
             (
                 endpoint.label.clone(),
                 format!("{detail} · {}", endpoint.status()),
-                self.device_filter.as_ref() == Some(&endpoint.id),
+                self.device_filter.picks(&endpoint.id),
                 endpoint.enabled,
             )
         }));
@@ -533,8 +559,19 @@ impl HerdrWindow {
             .child(
                 div()
                     .p(px(8.))
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap(px(8.))
                     .text_color(rgb(self.theme.muted))
-                    .child("DEVICES"),
+                    .child(div().flex_none().child("DEVICES"))
+                    .child(
+                        div()
+                            .min_w_0()
+                            .truncate()
+                            .text_size(px(self.config.ui.size * 0.85))
+                            .child(MULTI_SELECT_HINT),
+                    ),
             );
         for (index, (label, detail, checked, enabled)) in rows.into_iter().enumerate() {
             let endpoint = index.checked_sub(1).and_then(|i| self.endpoints.get(i));
@@ -634,8 +671,12 @@ impl HerdrWindow {
                             cx.notify();
                         }
                     }))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.choose_device(index, window, cx);
+                    .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
+                        if event.modifiers().secondary() {
+                            this.toggle_listed_device(index, window, cx);
+                        } else {
+                            this.choose_device(index, window, cx);
+                        }
                     })),
             );
         }
@@ -738,7 +779,7 @@ impl HerdrWindow {
         if index == self.endpoints.len() + 1 {
             self.open_device_setup(window, cx);
         } else {
-            let filter = if index == 0 {
+            let id = if index == 0 {
                 None
             } else {
                 let Some(endpoint) = self.endpoints.get(index - 1).filter(|e| e.enabled) else {
@@ -747,21 +788,57 @@ impl HerdrWindow {
                 Some(endpoint.id.clone())
             };
             self.dismiss_menu(window, cx);
-            if let Some(id) = &filter
+            if let Some(id) = &id
                 && !self.select_endpoint(id, cx)
             {
                 return;
             }
-            self.device_filter = filter;
-            for scroll in &self.sidebar_scroll {
-                scroll.set_offset(Point::default());
-            }
-            for revealed in &self.sidebar_revealed {
-                revealed.set(None);
-            }
-            // The row a reveal left for the next frame is in the old list.
-            self.sidebar_pin_reveal.set(None);
+            self.set_device_scope(id.map_or(DeviceScope::All, DeviceScope::only));
         }
+        cx.notify();
+    }
+
+    /// Adds a device to the sidebar's list or takes it away, leaving the picker
+    /// open to pick more. Taking away the device on screen selects the first
+    /// one still listed, so the terminal always belongs to a listed device;
+    /// like any switch of device, that closes the picker.
+    fn toggle_listed_device(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        // All Devices and Add Device have nothing to add.
+        let Some(endpoint) = index
+            .checked_sub(1)
+            .and_then(|index| self.endpoints.get(index))
+        else {
+            return self.choose_device(index, window, cx);
+        };
+        if !endpoint.enabled {
+            return;
+        }
+        let enabled = self
+            .endpoints
+            .iter()
+            .filter(|endpoint| endpoint.enabled)
+            .map(|endpoint| endpoint.id.as_str());
+        let Some(scope) = self.device_filter.toggled(
+            &endpoint.id,
+            &self.endpoints[self.selected_endpoint].id,
+            enabled,
+        ) else {
+            return;
+        };
+        if !scope.shows(&self.endpoints[self.selected_endpoint].id) {
+            let Some(next) = self
+                .displayed_devices()
+                .into_iter()
+                .find(|(_, endpoint)| endpoint.enabled && scope.shows(&endpoint.id))
+                .map(|(_, endpoint)| endpoint.id.clone())
+            else {
+                return;
+            };
+            if !self.select_endpoint(&next, cx) {
+                return;
+            }
+        }
+        self.set_device_scope(scope);
         cx.notify();
     }
 
@@ -789,6 +866,7 @@ impl HerdrWindow {
                     cx.notify();
                 }
                 "enter" => self.choose_device(self.menu.selected.unwrap_or(0), window, cx),
+                "space" => self.toggle_listed_device(self.menu.selected.unwrap_or(0), window, cx),
                 "escape" => self.dismiss_menu(window, cx),
                 _ => {}
             }

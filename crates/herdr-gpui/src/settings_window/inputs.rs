@@ -24,7 +24,6 @@ pub(in crate::settings_window) enum NumberField {
     SoundVolume,
     TerminalPadding(Axis, Side),
     RemotePort,
-    RemoteIdleDays,
 }
 
 impl NumberField {
@@ -37,7 +36,6 @@ impl NumberField {
             Self::SoundVolume => "notif-volume-control",
             Self::TerminalPadding(axis, side) => padding_ids(axis, side).1,
             Self::RemotePort => "remote-port-control",
-            Self::RemoteIdleDays => "remote-idle-control",
         }
     }
 
@@ -54,10 +52,6 @@ impl NumberField {
             Self::SoundVolume => 0.0..=f32::from(SoundConfig::MAX_VOLUME),
             Self::TerminalPadding(..) => 0.0..=MAX_PADDING,
             Self::RemotePort => 1.0..=f32::from(u16::MAX),
-            Self::RemoteIdleDays => {
-                let days = crate::config::remote::IDLE_DAYS;
-                f32::from(*days.start())..=f32::from(*days.end())
-            }
         }
     }
 }
@@ -183,6 +177,8 @@ impl SettingsWindow {
         let input = cx.new(SearchInput::new);
         input.update(cx, |input, cx| {
             input.set_text_selected(&format!("{}", value as i64), cx);
+            // The number's field already draws the frame.
+            input.set_frameless(cx);
             input.set_appearance(self.config.ui.clone(), self.theme.clone(), cx);
         });
         let focus = input.read(cx).focus.clone();
@@ -291,10 +287,6 @@ impl SettingsWindow {
                 NumberField::FontSize(face) => self.accept_control_size(face, value, cx),
                 NumberField::RemotePort => {
                     let edit = crate::config::remote::Edit::Port(value as u16);
-                    self.save_preference(Preference::Remote(edit), cx);
-                }
-                NumberField::RemoteIdleDays => {
-                    let edit = crate::config::remote::Edit::DeviceIdleDays(value as u16);
                     self.save_preference(Preference::Remote(edit), cx);
                 }
                 NumberField::Spacing(_) => {}

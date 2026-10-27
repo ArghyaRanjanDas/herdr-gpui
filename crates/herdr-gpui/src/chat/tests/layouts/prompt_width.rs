@@ -24,7 +24,10 @@ fn rich_user_prompts_use_the_narrow_column_without_inflating_short_bubbles(
                 cursor(1, 0),
                 vec![Entry {
                     id: EntryId(1),
-                    kind: EntryKind::User { text: text.into() },
+                    kind: EntryKind::User {
+                        text: text.into(),
+                        files: 0,
+                    },
                 }],
             ),
             cx,

@@ -14,7 +14,7 @@ mod links;
 use super::{
     copy,
     layout::layout_for,
-    selection::{Fragment, Scope},
+    selection::{Fragment, Scope, selectable, styled_text},
 };
 use crate::chat::selection::Cell;
 use links::Links;
@@ -179,11 +179,8 @@ impl HerdrWindow {
                 .iter()
                 .filter(|(_, style)| style.code)
                 .map(|(range, _)| (range.clone(), self.config.terminal.family.clone().into()));
-            let text = match &fragment {
-                Some(fragment) => fragment.styled(text, highlights, &self.theme),
-                None => StyledText::new(text).with_highlights(highlights),
-            }
-            .with_font_family_overrides(fonts);
+            let text = styled_text(fragment.as_ref(), text, highlights, &self.theme)
+                .with_font_family_overrides(fonts);
             let layout = text.layout().clone();
             let targets: Vec<_> = spans
                 .iter()
@@ -215,11 +212,7 @@ impl HerdrWindow {
             };
             // The selection canvas precedes glyphs so aligned background
             // marks paint behind the text and retain normal text contrast.
-            return match fragment {
-                Some(fragment) => fragment.wrap(view, layout, context.cx),
-                None => view,
-            }
-            .child(content);
+            return selectable(fragment.as_ref(), view, layout, context.cx).child(content);
         }
         let mut children = Vec::new();
         let mut offset = 0;
@@ -238,14 +231,14 @@ impl HerdrWindow {
                             .map(|fragment| fragment.range(offset..offset + word.len()));
                         offset += word.len();
                         let marks = [(0..word.len(), self.rich_style(style, context.inherit_ink))];
-                        let styled = match &selected {
-                            Some(selected) => selected.styled(word.to_owned(), marks, &self.theme),
-                            None => StyledText::new(word.to_owned()).with_highlights(marks),
-                        };
-                        let layout = styled.layout().clone();
-                        if let Some(selected) = selected.as_ref() {
-                            item = selected.wrap(item, layout, context.cx);
-                        }
+                        let styled =
+                            styled_text(selected.as_ref(), word.to_owned(), marks, &self.theme);
+                        item = selectable(
+                            selected.as_ref(),
+                            item,
+                            styled.layout().clone(),
+                            context.cx,
+                        );
                         item = if let Some(url) = &style.link {
                             let url = url.clone();
                             let links = context.links.clone();

@@ -2,10 +2,7 @@
 //! allocates no retained state; the first user edit creates it.
 
 use super::{Document, Values};
-use crate::{
-    chat::prepared::{Body, Part, Prepared},
-    search_input::SearchInput,
-};
+use crate::{chat::prepared::Prepared, search_input::SearchInput};
 use gpui::{App, Entity, Subscription, Window};
 use herdr_chat_protocol::EntryId;
 use std::{collections::BTreeMap, rc::Rc};
@@ -37,13 +34,8 @@ impl State {
     pub(crate) fn retain(&mut self, prepared: &Prepared) {
         // Invalidate on the update that replaces or removes a card, even if
         // nobody edits its replacement before the old source appears again.
-        self.forms.retain(|(entry, block), form| {
-            prepared.body(*entry).is_some_and(|body| {
-                matches!(body.as_ref(), Body::Message(parts)
-                    if matches!(parts.get(*block), Some(Part::Widget(document))
-                        if document.source == form.document.source))
-            })
-        });
+        self.forms
+            .retain(|key, form| prepared.shows_widget(*key, &form.document));
     }
 
     pub(crate) fn form(&self, key: Key, document: &Document) -> Option<&Form> {

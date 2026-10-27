@@ -21,6 +21,8 @@ pub enum Error {
     InvalidStat,
     #[error(transparent)]
     Io(#[from] io::Error),
+    #[error(transparent)]
+    Mirror(#[from] crate::mirror::Error),
     #[error("missing process start time")]
     MissingStartTime,
     #[error("Codex session has no creation timestamp")]

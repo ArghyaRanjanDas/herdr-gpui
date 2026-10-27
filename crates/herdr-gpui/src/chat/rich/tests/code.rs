@@ -19,3 +19,25 @@ fn code_preserves_tabs_in_copy_and_keeps_inline_words_separated() {
         |part| matches!(part, Inline::Text(text, style) if style.code && text == "left    right")
     ));
 }
+
+#[test]
+fn a_closed_fence_inside_a_quote_is_highlighted() {
+    let mut visuals = Visuals::default();
+    for text in [
+        "> ```rust\n> fn main() {}\n> ```",
+        "> > ```rust\n> > fn main() {}\n> > ```",
+        "> - ```rust\n>   fn main() {}\n>   ```",
+    ] {
+        let blocks = parse(text, &mut visuals).unwrap();
+        let id = blocks.iter().find_map(|block| match block {
+            Block::Code { id, .. } => Some(*id),
+            _ => None,
+        });
+        assert!(id.is_some_and(|id| visuals.wants(id)), "{text}");
+    }
+    let open = parse("> ```rust\n> fn main() {}", &mut visuals).unwrap();
+    let Some(Block::Code { id, .. }) = open.first() else {
+        panic!("code")
+    };
+    assert!(!visuals.wants(*id));
+}

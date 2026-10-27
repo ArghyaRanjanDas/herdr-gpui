@@ -373,23 +373,23 @@ fn device_filter_follows_navigation_and_catalog_retirement(cx: &mut gpui::TestAp
         view.reconcile_catalog(vec![host("a", true), host("b", true)], Vec::new(), cx);
         assert!(view.select_endpoint("ssh:a", cx));
         assert!(
-            view.device_filter.is_none(),
+            view.device_filter == crate::menu::DeviceScope::All,
             "All Devices stays an aggregate"
         );
-        view.device_filter = Some("ssh:a".into());
+        view.device_filter = crate::menu::DeviceScope::only("ssh:a");
         assert!(view.select_endpoint("ssh:b", cx));
-        assert_eq!(view.device_filter.as_deref(), Some("ssh:b"));
+        assert_eq!(view.device_filter, crate::menu::DeviceScope::only("ssh:b"));
         let mut renamed = host("b", true);
         renamed.label = "Renamed device".into();
         view.reconcile_catalog(vec![renamed], Vec::new(), cx);
-        assert_eq!(view.device_filter.as_deref(), Some("ssh:b"));
+        assert_eq!(view.device_filter, crate::menu::DeviceScope::only("ssh:b"));
         view.reconcile_catalog(vec![host("b", false)], Vec::new(), cx);
-        assert_eq!(view.device_filter.as_deref(), Some(LOCAL));
+        assert_eq!(view.device_filter, crate::menu::DeviceScope::only(LOCAL));
         assert!(!view.select_endpoint("ssh:b", cx));
         view.reconcile_catalog(vec![host("b", true)], Vec::new(), cx);
         assert!(view.select_endpoint("ssh:b", cx));
         view.reconcile_catalog(vec![], Vec::new(), cx);
-        assert_eq!(view.device_filter.as_deref(), Some(LOCAL));
+        assert_eq!(view.device_filter, crate::menu::DeviceScope::only(LOCAL));
     });
 }
 

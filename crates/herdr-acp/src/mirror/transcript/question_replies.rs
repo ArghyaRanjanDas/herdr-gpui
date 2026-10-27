@@ -166,7 +166,7 @@ fn retained_rows<'a>(value: &'a Value, order: &str) -> Option<(&'a str, Vec<Ques
     if rows.is_empty() || rows.len() > MAX_QUESTION_ANSWERS {
         return None;
     }
-    let answers: Vec<QuestionAnswer> = serde_json::from_value(value["questions"].clone()).ok()?;
+    let answers = Vec::<QuestionAnswer>::deserialize(&value["questions"]).ok()?;
     (valid_question_answers(&answers)
         && answers
             .iter()

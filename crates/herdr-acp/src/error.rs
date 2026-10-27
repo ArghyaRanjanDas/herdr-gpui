@@ -28,10 +28,14 @@ pub enum Error {
     Encode(#[source] serde_json::Error),
     #[error("Herdr's API answered with an error: {0}")]
     HerdrApi(String),
+    #[error("Herdr's answer named no {0}")]
+    HerdrAnswer(&'static str),
     #[error("chat I/O failed")]
     Io(#[from] io::Error),
     #[error("a line from the agent exceeded {limit} bytes")]
     LineTooLong { limit: usize },
+    #[error(transparent)]
+    Mirror(#[from] crate::mirror::Error),
     #[error("no directory to listen in: neither XDG_STATE_HOME nor HOME is set")]
     NoEndpointDir,
     #[error(transparent)]

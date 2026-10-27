@@ -143,6 +143,14 @@ pub(crate) struct Target {
     pub(crate) route: Route,
 }
 
+impl Target {
+    /// Whether the chat's program runs on this machine, so the paths in its
+    /// conversation name files here.
+    pub(crate) fn is_local(&self) -> bool {
+        self.route == Route::Local
+    }
+}
+
 /// How the window reaches a chat's program.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum Route {

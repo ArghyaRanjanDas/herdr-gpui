@@ -2,6 +2,7 @@ use super::*;
 use crate::chat::prepared::{Body, DiffSummary, Part, Prepared, summarize};
 use herdr_chat_protocol::{Tool, ToolContent, ToolKind, ToolStatus};
 
+mod cut;
 mod fences;
 mod measurement;
 
@@ -92,7 +93,10 @@ fn bodies_are_prepared_once_per_revision() {
         },
         Entry {
             id: EntryId(3),
-            kind: EntryKind::User { text: "hi".into() },
+            kind: EntryKind::User {
+                text: "hi".into(),
+                files: 0,
+            },
         },
     ];
     let keys = vec![(EntryId(1), 1), (EntryId(2), 1), (EntryId(3), 1)];

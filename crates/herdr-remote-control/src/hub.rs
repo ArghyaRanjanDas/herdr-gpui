@@ -20,6 +20,7 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, PoisonError},
+    time::Duration,
 };
 use tokio::sync::{broadcast, watch};
 
@@ -27,6 +28,10 @@ pub(crate) type Result<T> = std::result::Result<T, Error>;
 
 /// Steps of every chat queued for the push notifier.
 const ALL_QUEUE: usize = 4096;
+
+/// How often a listed chat is checked for its link, which [`Hub::follow`]
+/// makes on the same layout change without signalling.
+const LINK_CHECK: Duration = Duration::from_millis(50);
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -97,9 +102,23 @@ impl Hub {
     /// for tests that must not reach a real Herdr.
     #[cfg(test)]
     pub(crate) fn offline(layout: Layout) -> Arc<Self> {
+        Arc::new(Self::offline_in(layout, None))
+    }
+
+    /// An offline hub that connects to the chats of `layout` in `chat_dir`,
+    /// for tests that serve a chat program of their own.
+    #[cfg(all(test, unix))]
+    pub(crate) fn offline_with_chats(layout: Layout, chat_dir: PathBuf) -> Arc<Self> {
+        let hub = Self::offline_in(layout, Some(chat_dir));
+        hub.reconcile(&hub.layout());
+        Arc::new(hub)
+    }
+
+    #[cfg(test)]
+    fn offline_in(layout: Layout, chat_dir: Option<PathBuf>) -> Self {
         let (sender, receiver) = watch::channel(Arc::new(layout));
         let (all, _) = broadcast::channel(ALL_QUEUE);
-        Arc::new(Self {
+        Self {
             // No socket answers here, so a request fails rather than reach
             // a real Herdr.
             api: api::Api::new(Some(PathBuf::from("/nonexistent/herdr-client.sock"))),
@@ -107,9 +126,9 @@ impl Hub {
             layout: receiver,
             chats: Mutex::new(HashMap::new()),
             all,
-            chat_dir: None,
+            chat_dir,
             program: None,
-        })
+        }
     }
 
     pub(crate) fn layout(&self) -> Arc<Layout> {
@@ -140,7 +159,7 @@ impl Hub {
 
     /// Opens a tab in `workspace` running a chat with `agent`, in `cwd` or
     /// the workspace's folder, as Herdr UI's `chat new` does. Returns the
-    /// new tab's id.
+    /// new chat's pane id.
     pub(crate) async fn start_chat(
         &self,
         workspace: &str,
@@ -161,9 +180,21 @@ impl Hub {
                 tab_params(workspace, cwd.unwrap_or(&folder), agent, program),
             )
             .await?;
-        let (tab, pane) = created_tab(&response).ok_or(Error::Response)?;
+        let (_, pane) = created_tab(&response).ok_or(Error::Response)?;
         self.run_line(&pane, &command_line(agent)).await?;
-        Ok(tab)
+        Ok(pane)
+    }
+
+    /// Waits up to `limit` for the chat in `pane` to be listed and linked,
+    /// so a phone can open it. Returns whether it got there.
+    pub(crate) async fn chat_ready(&self, pane: &str, limit: Duration) -> bool {
+        let mut layout = self.layout.clone();
+        tokio::time::timeout(
+            limit,
+            chat_listed_and_linked(&mut layout, pane, || self.chat(pane).is_some()),
+        )
+        .await
+        .is_ok()
     }
 
     /// A new workspace in `cwd`, on a new worktree when `branch` is given,
@@ -329,6 +360,27 @@ fn created_tab(result: &Value) -> Option<(String, String)> {
         id(&result["tab"]["tab_id"])?,
         id(&result["root_pane"]["pane_id"])?,
     ))
+}
+
+/// Returns once `layout` lists the chat in `pane` and `linked` says its
+/// connection is up; the caller bounds the wait.
+async fn chat_listed_and_linked(
+    layout: &mut watch::Receiver<Arc<Layout>>,
+    pane: &str,
+    linked: impl Fn() -> bool,
+) {
+    loop {
+        let listed = layout.borrow_and_update().chat(pane).is_some();
+        if listed && linked() {
+            return;
+        }
+        if listed {
+            tokio::time::sleep(LINK_CHECK).await;
+        } else if layout.changed().await.is_err() {
+            // The daemon watcher is gone, so the chat never appears.
+            std::future::pending::<()>().await;
+        }
+    }
 }
 
 /// The line typed into a new chat tab, the same as Herdr UI types: the

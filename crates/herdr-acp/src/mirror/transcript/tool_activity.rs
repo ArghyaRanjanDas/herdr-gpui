@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use herdr_chat_protocol::{Entry, EntryKind, ToolStatus};
 use serde_json::Value;
 
-use super::{MAX_ENTRIES, text, tool_metadata};
+use super::{MAX_ENTRIES, tool_metadata};
 
 #[derive(Clone, Copy)]
 enum Operation {
@@ -85,6 +85,7 @@ impl Activity {
         &mut self,
         index: usize,
         output: &Value,
+        raw: &str,
         failed: bool,
         entries: &mut [Entry],
     ) {
@@ -95,7 +96,7 @@ impl Activity {
         let result = if failed {
             Outcome::Failed
         } else {
-            outcome(operation, output)
+            outcome(operation, output, raw)
         };
         let Some(call) = self.calls.get_mut(&index) else {
             set_status(entries, index, result.status());
@@ -174,7 +175,7 @@ impl Outcome {
     }
 }
 
-fn outcome(operation: Operation, output: &Value) -> Outcome {
+fn outcome(operation: Operation, output: &Value, raw: &str) -> Outcome {
     let decoded = tool_metadata::arguments(output);
     // MCP's explicit error flag is evidence; the word "error" in ordinary
     // program output is not. Unknown result schemas otherwise stay opaque.
@@ -193,10 +194,9 @@ fn outcome(operation: Operation, output: &Value) -> Outcome {
             return Outcome::Running(Job::Command(id));
         }
     }
-    let raw = text(output);
     match operation {
-        Operation::Command => command_wrapper(&raw).unwrap_or(Outcome::Returned),
-        Operation::Script => script_wrapper(&raw).unwrap_or(Outcome::Returned),
+        Operation::Command => command_wrapper(raw).unwrap_or(Outcome::Returned),
+        Operation::Script => script_wrapper(raw).unwrap_or(Outcome::Returned),
         Operation::Other => Outcome::Returned,
     }
 }

@@ -7,7 +7,7 @@ fn ordinary_markdown_keeps_hierarchy_lists_and_inline_semantics_without_visual_j
         "# Main\n\nParagraph with **bold**, *emphasis*, `code`, and ~~old~~ text.\n\n## Details\n\n- Parent\n  - Nested\n\n3. Third\n4. Fourth\n\n> Quote\n\nLast paragraph.",
         &mut visuals,
     ).unwrap();
-    assert!(blocks.iter().all(|block| block.visuals().is_empty()));
+    assert!(blocks.iter().all(|block| block.visuals().next().is_none()));
     let paragraphs: Vec<_> = blocks
         .iter()
         .filter_map(|block| match block {
@@ -86,7 +86,7 @@ fn inline_images_preserve_their_source_without_loading_or_linking() {
     let source = "See ![**plot**](plots/a.png) and ![remote](https://example.org/a.png).";
     let mut visuals = Visuals::default();
     let blocks = parse(source, &mut visuals).unwrap();
-    assert!(blocks.iter().all(|block| block.visuals().is_empty()));
+    assert!(blocks.iter().all(|block| block.visuals().next().is_none()));
     let Block::Paragraph { content, .. } = &blocks[0] else {
         panic!("paragraph")
     };

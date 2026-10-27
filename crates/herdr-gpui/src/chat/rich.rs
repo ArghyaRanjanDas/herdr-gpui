@@ -8,11 +8,14 @@ mod highlight_diff;
 mod math;
 mod math_input;
 mod parse;
+mod quote;
+mod remote;
 
 pub(super) use code::{CodeText, MAX_CODE_LINE_CHARS, MAX_CODE_LINES, TAB_WIDTH};
 pub(super) use fence::Fence;
 pub(super) use math::draw as draw_math;
 pub(super) use parse::parse;
+pub(super) use remote::remote_content;
 
 use super::visual::{Source, VisualId, Visuals};
 use pulldown_cmark::{Alignment, HeadingLevel};
@@ -132,25 +135,19 @@ impl Block {
         }
     }
 
-    pub(super) fn visuals(&self) -> Vec<VisualId> {
-        let inline = |content: &[Inline]| {
-            content
-                .iter()
-                .filter_map(|part| match part {
-                    Inline::Math { id, .. } => Some(*id),
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
+    /// The visuals this block draws: its own code or display formula, or the
+    /// inline formulas in its text.
+    pub(super) fn visuals(&self) -> impl Iterator<Item = VisualId> + '_ {
+        let (own, prose, rows): (_, &[Inline], &[Vec<Vec<Inline>>]) = match self {
+            Self::Code { id, .. } | Self::Math { id, .. } => (Some(*id), &[], &[]),
+            Self::Paragraph { content, .. } => (None, content, &[]),
+            Self::Table { rows, .. } => (None, &[], rows),
         };
-        match self {
-            Self::Code { id, .. } | Self::Math { id, .. } => vec![*id],
-            Self::Paragraph { content, .. } => inline(content),
-            Self::Table { rows, .. } => rows
-                .iter()
-                .flatten()
-                .flat_map(|cell| inline(cell))
-                .collect(),
-        }
+        let inline = prose.iter().chain(rows.iter().flatten().flatten());
+        own.into_iter().chain(inline.filter_map(|part| match part {
+            Inline::Math { id, .. } => Some(*id),
+            _ => None,
+        }))
     }
 }
 

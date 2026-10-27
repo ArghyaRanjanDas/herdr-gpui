@@ -228,10 +228,14 @@ impl Selection {
     }
 
     pub(crate) fn highlight(&self, document: &Document, key: Key) -> Option<Range<usize>> {
-        let range = self.range.as_ref()?;
-        let (start, end) = range.ordered(document)?;
+        let Ends {
+            start,
+            end,
+            from,
+            to,
+        } = self.range.as_ref()?.ends(document)?;
         let position = document.order(key)?;
-        if position < document.order(start.key)? || position > document.order(end.key)? {
+        if position < from || position > to {
             return None;
         }
         let from = if key == start.key { start.offset } else { 0 };
@@ -247,12 +251,15 @@ impl Selection {
     /// Refuse over-limit copies rather than silently copying a partial range.
     pub(crate) fn text(&self, document: &Document) -> Option<String> {
         let range = self.range.as_ref().filter(|range| range.valid(document))?;
-        let (start, end) = range.ordered(document)?;
+        let Ends {
+            start,
+            end,
+            from,
+            to,
+        } = range.ends(document)?;
         if start == end {
             return None;
         }
-        let from = document.order(start.key)?;
-        let to = document.order(end.key)?;
         let mut text = String::new();
         let mut first = true;
         for (entry_index, entry) in document
@@ -301,43 +308,63 @@ impl Selection {
     }
 }
 
+/// A selection's ends in reading order, with where each lies in the document.
+struct Ends {
+    start: Caret,
+    end: Caret,
+    from: Order,
+    to: Order,
+}
+
 impl RangeSelection {
-    fn ordered(&self, document: &Document) -> Option<(Caret, Caret)> {
-        let anchor = (document.order(self.anchor.key)?, self.anchor.offset);
-        let head = (document.order(self.head.key)?, self.head.offset);
-        Some(if anchor <= head {
-            (self.anchor, self.head)
-        } else {
-            (self.head, self.anchor)
-        })
+    fn ends(&self, document: &Document) -> Option<Ends> {
+        let anchor = document.order(self.anchor.key)?;
+        let head = document.order(self.head.key)?;
+        Some(
+            if (anchor, self.anchor.offset) <= (head, self.head.offset) {
+                Ends {
+                    start: self.anchor,
+                    end: self.head,
+                    from: anchor,
+                    to: head,
+                }
+            } else {
+                Ends {
+                    start: self.head,
+                    end: self.anchor,
+                    from: head,
+                    to: anchor,
+                }
+            },
+        )
+    }
+
+    /// The entries the selection spans, each with the version it was made
+    /// against.
+    fn span<'d>(
+        &self,
+        document: &'d Document,
+    ) -> Option<impl Iterator<Item = (EntryId, u64)> + use<'d>> {
+        let Ends { from, to, .. } = self.ends(document)?;
+        Some(
+            document.entries[from.entry..=to.entry]
+                .iter()
+                .map(|entry| (entry.id, entry.version)),
+        )
     }
 
     fn remember(&mut self, document: &Document) {
-        self.covered.clear();
-        let Some((start, end)) = self.ordered(document) else {
-            return;
-        };
-        let (Some(start), Some(end)) = (document.order(start.key), document.order(end.key)) else {
-            return;
-        };
-        self.covered.extend(
-            document.entries[start.entry..=end.entry]
-                .iter()
-                .map(|entry| (entry.id, entry.version)),
-        );
+        self.covered = self
+            .span(document)
+            .map(Iterator::collect)
+            .unwrap_or_default();
     }
 
+    /// Whether every entry the selection spans is still the version it was
+    /// made against.
     fn valid(&self, document: &Document) -> bool {
-        let Some((start, end)) = self.ordered(document) else {
-            return false;
-        };
-        let (Some(start), Some(end)) = (document.order(start.key), document.order(end.key)) else {
-            return false;
-        };
-        document.entries[start.entry..=end.entry]
-            .iter()
-            .map(|entry| (entry.id, entry.version))
-            .eq(self.covered.iter().copied())
+        self.span(document)
+            .is_some_and(|span| span.eq(self.covered.iter().copied()))
     }
 }
 

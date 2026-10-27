@@ -89,7 +89,10 @@ fn streaming_and_literal_markers_do_not_alias_complete_formulas() {
         .collect();
     assert_eq!(formulas, ["\nx\n=\ny\n", "HERDRDISPLAY"]);
     let escaped = r"\$$ literal dollars and $$$ not a pair $$$";
-    assert_eq!(math_input::protect_display(escaped).markdown, escaped);
+    assert_eq!(
+        math_input::protect_display(&parse::normalize_math(escaped)).markdown,
+        escaped
+    );
 }
 
 #[test]
@@ -99,7 +102,7 @@ fn an_unfinished_formula_cannot_borrow_its_closer_from_code_or_html() {
         "Unfinished \\[\n\n<div>\\]</div>",
         "Unfinished \\[ `\\]`",
     ] {
-        assert_eq!(parse::normalize_math(content), content);
+        assert_eq!(parse::normalize_math(content).text, content);
     }
     let source = "\n\\begin{aligned}\n\n    a &= b \\\\\n    c &= d\n\\end{aligned}\n";
     let blocks = parse(&format!("\\[{source}\\]"), &mut Visuals::default()).unwrap();
@@ -141,6 +144,22 @@ fn quoted_display_formulas_keep_math_comparisons_but_not_markdown_markers() {
         let blocks = parse(&text, &mut Visuals::default()).unwrap();
         assert!(
             matches!(&blocks[..], [Block::Math { source, .. }] if source.as_ref() == "\nx > 1\n=\ny\n")
+        );
+    }
+}
+
+#[test]
+fn normalizing_math_keeps_code_and_html_where_a_fresh_parse_finds_them() {
+    for text in [
+        r"Area \( \pi r^2 \) and `\(code\)` then <b>\[x\]</b> \[ y \]",
+        "Unfinished \\[\n\n```tex\n\\]\n```\n\\(a\\)",
+        r"\(α\) ![\(img\)](x.png) \(β\)",
+    ] {
+        let normalized = parse::normalize_math(text);
+        assert_eq!(
+            normalized.protected,
+            math_input::protected_ranges(&normalized.text),
+            "{text}"
         );
     }
 }

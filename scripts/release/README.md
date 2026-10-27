@@ -121,7 +121,12 @@ SIGKILL/power loss cannot be cleaned up. Apple security tools receive passwords
 as arguments, so the runner must not have untrusted local users. No GUI executable
 is run, including for version probing. Signing works on a copy of the input app.
 
-Both executable and bundle are explicitly signed with hardened runtime and secure
+The bundle holds four universal executables: `Contents/MacOS/Herdr`, the
+`herdr-acp` the app starts chats with, `herdr-remote-control`, the remote
+control daemon it runs as a user service, and `herdr-automate`, the automation
+daemon; `package-macos.sh` takes the last three from beside each architecture's
+`herdr-gpui`. Those three are signed first, without the
+app's entitlements, then `Herdr`, then the bundle, all with hardened runtime and secure
 timestamps. The zipped app must receive JSON status `Accepted`, then the app is
 stapled and validated. The DMG contains `Herdr.app` and an `/Applications` symlink;
 it is signed, separately notarized, stapled, and checked with codesign and
@@ -138,10 +143,12 @@ The release workflow builds both natively on Ubuntu 24.04 architecture runners,
 using the same `scripts/install-linux-deps.sh` library setup as CI. Both archives
 are mandatory in the single immutable asset manifest; signing, provenance and
 consumer verification cover both. The SBOM unions both Linux, both macOS, and
-the Windows target graphs. No separate per-platform manifest or publication job is used.
+the Windows target graphs, each the app's joined with those of the programs shipped beside it (`SHIPPED` in
+`generate-sbom.py`). No separate per-platform manifest or publication job is used.
 The caller must supply the matching release binary; packaging does not cross-build
 or resolve shared libraries. Output is `Herdr-VERSION-TARGET.tar.gz`, with a
-same-named root containing `bin/herdr-gpui`, a scalable SVG icon, desktop entry, license and
+same-named root containing `bin/herdr-gpui`, `bin/herdr-acp`,
+`bin/herdr-remote-control`, and `bin/herdr-automate` (all taken from beside the binary), a scalable SVG icon, desktop entry, license and
 notice under `share/`. Install that tree into a chosen prefix with its `bin` on
 PATH. Archives are not promised to be bit-for-bit reproducible.
 
@@ -160,7 +167,8 @@ stamped with the release date, and the release host name is kept out of the
 RPM header, so repackaging one release produces identical bytes.
 `scripts/release/smoke-linux-packages.sh VERSION TARGET DIST_DIR` then installs
 each package into digest-pinned Ubuntu 24.04, Debian 13 and Fedora 42 containers,
-plus Arch Linux on x86_64 (no official ARM64 image exists), runs `herdr-gpui --help`,
+plus Arch Linux on x86_64 (no official ARM64 image exists), runs `herdr-gpui --help`
+and the shipped programs' `--help` or `--version`,
 fails if `ldd` reports a missing library or a dlopened loader is absent, and removes
 the package again. When packaged dependencies change, update `DEPENDS` in
 `package-linux-distro.py` and rerun the smoke script.
@@ -179,7 +187,10 @@ there. `scripts/release/package-windows.py VERSION TARGET BINARY LAUNCHER
 OUTPUT_DIR THIRD_PARTY_NOTICES` (standard-library Python, since the runner has no
 zip tool) writes one `Herdr-VERSION-TARGET.zip` per target with a same-named root
 containing `herdr-gpui.exe`, the windowed `herdr-gpui-launcher.exe` that the
-installer's Start menu shortcut opens, and `licenses/` holding the same license
+installer's Start menu shortcut opens, `herdr-acp.exe`, which the app starts
+chats with, `herdr-remote-control.exe`, the remote control daemon it runs as a
+scheduled task, and `herdr-automate.exe`, the automation daemon (all taken from
+beside `BINARY`), and `licenses/` holding the same license
 and notice files as the Linux tree. Entries carry a fixed timestamp.
 
 `scripts/release/windows-installer.py` then installs the pinned Inno Setup
@@ -188,13 +199,17 @@ compiler (`install-iscc`, checked against its SHA-256), compiles
 `Herdr-VERSION-TARGET-setup.exe` (`build`), and installs and uninstalls it on
 the runner (`smoke`), checking the files, their subsystems, `herdr-gpui.exe`'s
 output, the Start menu shortcut's target (the launcher) and AppUserModelID,
-the user `PATH` entry, and the Settings entry. CI's `windows-package` job runs the same
+the user `PATH` entry, and the Settings entry, and that an update and the
+uninstaller stop a running `herdr-automate.exe` daemon (the update starts the
+new copy again) rather than failing to replace it. CI's `windows-package` job runs the same
 optimized build, packaging, installer build, and install/uninstall check on
 `windows-2025` for any pull request that changes their inputs
 (`scripts/ci-changes.sh` lists them), and the required gate then requires it. The installer is per-user (no elevation),
 installs to `%LOCALAPPDATA%\Programs\Herdr UI` as `site/install.ps1` does, adds
 that directory to the user `PATH`, and creates the Start menu shortcut to the
-launcher. Both zips and both
+launcher. Both stop the installed automation daemon with `herdr-automate
+shutdown`, which lets its runs finish, before replacing or removing its files.
+Both zips and both
 installers are mandatory in the asset manifest and receive checksums, Sigstore
 sidecars and provenance like every other asset, after the Authenticode signing
 below when it is set up. The installers are also listed in their own
@@ -223,8 +238,8 @@ fails instead of falling back to unsigned. When signing is on:
 
 1. `windows-signing.py unpack` extracts the tested zip without running anything.
 2. `azure/login` signs in to Azure with the job's OIDC token, and
-   `azure/artifact-signing-action` signs `herdr-gpui.exe` and
-   `herdr-gpui-launcher.exe` with SHA-256 and an RFC 3161 timestamp from
+   `azure/artifact-signing-action` signs `herdr-gpui.exe`,
+   `herdr-gpui-launcher.exe`, `herdr-acp.exe`, `herdr-remote-control.exe`, and `herdr-automate.exe` with SHA-256 and an RFC 3161 timestamp from
    `http://timestamp.acs.microsoft.com`.
 3. `windows-signing.py repack` refuses unless the tree holds exactly the zip's
    files and each executable differs from the tested one only by its appended

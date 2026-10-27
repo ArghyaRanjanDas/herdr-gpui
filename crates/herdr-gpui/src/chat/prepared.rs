@@ -10,11 +10,12 @@ use super::{
 };
 use crate::release_notes::{self, Line};
 use herdr_chat_protocol::{
-    EntryId, EntryKind, MAX_QUESTION_ANSWERS, MAX_QUESTION_TEXT, QuestionAnswer, ToolContent,
-    ToolKind, Transcript,
+    Author, EntryId, EntryKind, MAX_QUESTION_ANSWERS, MAX_QUESTION_TEXT, QuestionAnswer,
+    ToolContent, ToolKind, Transcript,
 };
 use std::{
     collections::{HashMap, HashSet},
+    fmt::Write as _,
     rc::Rc,
 };
 
@@ -162,15 +163,16 @@ impl Body {
         };
         parts
             .iter()
-            .flat_map(|part| match part {
-                Part::Diagram(id, _) | Part::Remote { id, .. } => vec![*id],
-                Part::Rich(blocks) => blocks
-                    .iter()
-                    .flat_map(super::rich::Block::visuals)
-                    .collect(),
-                Part::Text(_) | Part::Widget(_) | Part::Html { .. } | Part::Picture { .. } => {
-                    Vec::new()
-                }
+            .flat_map(|part| {
+                let (own, blocks): (_, &[super::rich::Block]) = match part {
+                    Part::Diagram(id, _) | Part::Remote { id, .. } => (Some(*id), &[]),
+                    Part::Rich(blocks) => (None, blocks),
+                    Part::Text(_) | Part::Widget(_) | Part::Html { .. } | Part::Picture { .. } => {
+                        (None, &[])
+                    }
+                };
+                own.into_iter()
+                    .chain(blocks.iter().flat_map(super::rich::Block::visuals))
             })
             .chain(images.iter().copied())
             .chain(
@@ -240,6 +242,19 @@ impl Prepared {
         self.bodies.get(&id).map(|(_, body)| body.clone())
     }
 
+    /// Whether the message part at `key` is still the card `document`.
+    pub(crate) fn shows_widget(
+        &self,
+        (entry, part): super::widgets::Key,
+        document: &super::widgets::Document,
+    ) -> bool {
+        self.bodies.get(&entry).is_some_and(|(_, body)| {
+            matches!(&**body, Body::Message(parts)
+                if matches!(parts.get(part), Some(Part::Widget(shown))
+                    if shown.source == document.source))
+        })
+    }
+
     pub(crate) fn changed(&self) -> &[DiffSummary] {
         &self.changed
     }
@@ -282,7 +297,7 @@ impl Prepared {
             }
             let visuals = &mut self.visuals;
             let body = match &entry.kind {
-                EntryKind::User { text } => Body::Message(message(text, Author::User, visuals)),
+                EntryKind::User { text, .. } => Body::Message(message(text, Author::User, visuals)),
                 EntryKind::Notice { answers, .. } if !answers.is_empty() => {
                     let text: Rc<str> = answers_text(answers).into();
                     let parts = vec![prose(&text, visuals)];
@@ -367,7 +382,7 @@ pub(super) fn answers_text(answers: &[QuestionAnswer]) -> String {
         if index > 0 {
             source.push_str("\n\n");
         }
-        source.push_str(&format!("**Question {}**\n\n", index + 1));
+        let _ = write!(source, "**Question {}**\n\n", index + 1);
         for (label, text) in [
             ("", &answer.question),
             ("\n\n**Answer**\n\n", &answer.answer),
@@ -388,18 +403,12 @@ pub(super) fn answers_text(answers: &[QuestionAnswer]) -> String {
     source
 }
 
-/// Who wrote a message. A user's own text is shown as Markdown, but only an
-/// agent's reply can become a live card or a page preview: pasting an earlier
-/// reply must not turn the user's bubble into a form that sends prompts.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Author {
-    Agent,
-    User,
-}
-
 /// A message as Markdown text with its diagrams, pages, and
 /// pictures between it. Only a closed fence becomes a diagram or a page, so
-/// one still streaming shows as code.
+/// one still streaming shows as code. A user's own text is shown as Markdown,
+/// but only an agent's reply can become a live card or a page preview:
+/// pasting an earlier reply must not turn the user's bubble into a form that
+/// sends prompts.
 fn message(text: &str, author: Author, visuals: &mut Visuals) -> Vec<Part> {
     let end = MESSAGE
         .clip(text)
@@ -501,12 +510,12 @@ fn message(text: &str, author: Author, visuals: &mut Visuals) -> Vec<Part> {
         parts.push(prose(&markdown, visuals));
     }
     if cut {
-        if let Some(Part::Text(lines)) = parts.last_mut() {
-            let mut appended = lines.to_vec();
-            appended.push(release_notes::note(CUT));
-            *lines = appended.into();
-        } else {
-            parts.push(Part::Text(vec![release_notes::note(CUT)].into()));
+        let note = release_notes::note(CUT);
+        match parts.last_mut() {
+            // Lines cut for their own length already end with the note.
+            Some(Part::Text(lines)) if lines.last() == Some(&note) => {}
+            Some(Part::Text(lines)) => *lines = lines.iter().cloned().chain([note]).collect(),
+            _ => parts.push(Part::Text(vec![note].into())),
         }
     }
     parts

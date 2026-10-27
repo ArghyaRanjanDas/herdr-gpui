@@ -248,7 +248,10 @@ fn choosing_another_session_of_the_device_it_is_on_retargets_that_device(cx: &mu
         let view = view.read(cx);
         assert_eq!(view.menu.page, None, "choosing closes the list");
         assert_eq!(view.selected_endpoint, 1, "it stays on the same device");
-        assert_eq!(view.device_filter.as_deref(), Some("ssh:build"));
+        assert_eq!(
+            view.device_filter,
+            crate::menu::DeviceScope::only("ssh:build")
+        );
         assert_eq!(
             view.endpoints[1].connection.target,
             ConnectTarget::Ssh {
@@ -337,7 +340,10 @@ fn clicking_a_disabled_device_does_not_filter_the_list_to_it(cx: &mut TestAppCon
         let view = view.read(cx);
         assert_eq!(view.menu.page, Some(Page::Sessions), "the menu stays open");
         assert_eq!(view.selected_endpoint, 0, "nothing was attached");
-        assert_ne!(view.device_filter.as_deref(), Some("ssh:off"));
+        assert_ne!(
+            view.device_filter,
+            crate::menu::DeviceScope::only("ssh:off")
+        );
     });
 }
 
@@ -482,7 +488,7 @@ fn choosing_a_local_session_retargets_the_local_endpoint(cx: &mut TestAppContext
             view.selected_endpoint, 0,
             "the local endpoint stays current"
         );
-        assert_eq!(view.device_filter.as_deref(), Some(LOCAL));
+        assert_eq!(view.device_filter, crate::menu::DeviceScope::only(LOCAL));
         assert_eq!(view.endpoints[0].connection.target, development("work"));
     });
 }
@@ -522,7 +528,7 @@ fn choosing_a_local_session_leaves_a_remote_endpoint(cx: &mut TestAppContext) {
         let view = view.read(cx);
         assert_eq!(view.menu.page, None, "choosing closes the list");
         assert_eq!(view.selected_endpoint, 0, "the local endpoint takes over");
-        assert_eq!(view.device_filter.as_deref(), Some(LOCAL));
+        assert_eq!(view.device_filter, crate::menu::DeviceScope::only(LOCAL));
         assert_eq!(view.endpoints[0].connection.target, development("work"));
     });
 }
@@ -716,7 +722,10 @@ fn choosing_a_remote_row_selects_that_device(cx: &mut TestAppContext) {
     cx.update(|_, cx| {
         let view = view.read(cx);
         assert_eq!(view.selected_endpoint, 1, "the device became current");
-        assert_eq!(view.device_filter.as_deref(), Some("ssh:fixture"));
+        assert_eq!(
+            view.device_filter,
+            crate::menu::DeviceScope::only("ssh:fixture")
+        );
         assert_eq!(view.menu.page, None);
     });
 }

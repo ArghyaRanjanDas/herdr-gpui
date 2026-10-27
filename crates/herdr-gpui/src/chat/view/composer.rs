@@ -28,7 +28,7 @@ impl HerdrWindow {
                 .items_start()
                 .gap(px(8.))
                 .p(px(12.))
-                .text_size(px((self.chat_text_size() - 1.).max(10.)))
+                .text_size(self.chat_small_text())
                 .text_color(rgb(theme.subtext()))
                 .child("Continue this conversation in its terminal.")
                 .child(

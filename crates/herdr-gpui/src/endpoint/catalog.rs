@@ -364,6 +364,14 @@ impl HerdrWindow {
             .iter()
             .position(|e| e.id == selected_id)
             .unwrap_or(0);
+        // Devices picked for the sidebar that left or were disabled are no
+        // longer listed; the selected one was followed above.
+        self.device_filter.reconcile(
+            self.endpoints
+                .iter()
+                .filter(|endpoint| endpoint.enabled)
+                .map(|endpoint| endpoint.id.as_str()),
+        );
         // A tab torn off another window may belong to a host just listed.
         self.land_arrival(true, cx);
         cx.notify();

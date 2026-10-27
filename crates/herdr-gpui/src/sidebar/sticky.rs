@@ -30,6 +30,20 @@ pub(super) fn pinned(headers: &[HostHeader]) -> Option<HostHeader> {
     })
 }
 
+/// Clamps `scroll` to the extent its last frame measured, which is what draws.
+/// The wheel moves an offset without bounds and GPUI clamps it only in
+/// prepaint, after render pinned headers and judged visibility from it: a list
+/// that fits would pin a header it never scrolls past. Call before reading it.
+pub(super) fn settle(scroll: &gpui::ScrollHandle) {
+    let offset = scroll.offset();
+    let clamped = offset
+        .min(&gpui::Point::default())
+        .max(&-scroll.max_offset());
+    if clamped != offset {
+        scroll.set_offset(clamped);
+    }
+}
+
 /// How far down the list's top the pinned copy hides rows; 0 with none.
 pub(super) fn cover(headers: &[HostHeader]) -> f32 {
     pinned(headers).map_or(0., |pinned| pinned.top + pinned.height)

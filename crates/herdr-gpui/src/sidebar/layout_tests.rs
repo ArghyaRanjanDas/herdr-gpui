@@ -32,6 +32,8 @@ mod configured_rows;
 mod device_footer;
 #[cfg(test)]
 mod device_footer_setting;
+#[cfg(test)]
+mod device_multi_select;
 #[cfg(all(test, feature = "azure"))]
 mod device_removing;
 #[cfg(test)]
@@ -82,6 +84,8 @@ mod row_drag;
 mod search;
 #[cfg(test)]
 mod selection_scroll;
+#[cfg(test)]
+mod short_list_scroll;
 #[cfg(test)]
 mod sidebar_cache;
 #[cfg(test)]
@@ -572,6 +576,7 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<HerdrWindow>)
         copy_mode: None,
         find_memory: Default::default(),
         flash: None,
+        flash_motion: Default::default(),
         configured_terminal_size: crate::config::Config::default().terminal.size,
         gui_config_diagnostic: Default::default(),
         icon_font_notice: Default::default(),
@@ -633,7 +638,7 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<HerdrWindow>)
         sidebar_start_pending: true,
         status_bar_visible: true,
         zen: Default::default(),
-        device_filter: None,
+        device_filter: Default::default(),
         endpoints: vec![crate::endpoint::Endpoint::new(
             crate::endpoint::LOCAL.into(),
             "Local".into(),
@@ -652,6 +657,7 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<HerdrWindow>)
         arrival: None,
         strip_navigation_fits: true,
         pending_toast: None,
+        toast_motion: Default::default(),
         toasts_hidden: false,
         pending_releases: Vec::new(),
         selected_generation: 0,
@@ -735,6 +741,7 @@ pub(crate) fn fixture_window(window: &mut Window, cx: &mut Context<HerdrWindow>)
         sidebar_nested_reveal: Default::default(),
         sidebar_folded: Default::default(),
         sidebar_search: crate::sidebar::SidebarSearch::new(cx),
+        sidebar_slide: Default::default(),
         _poll: Task::ready(()),
         _activation: cx.observe_window_activation(window, |_, _, _| {}),
         _window_closed: HerdrWindow::give_back_torn_tabs(cx),

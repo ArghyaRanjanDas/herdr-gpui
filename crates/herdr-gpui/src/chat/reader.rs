@@ -73,11 +73,9 @@ impl HerdrWindow {
     }
 
     pub(in crate::chat) fn chat_reader_focused(&self, pane_id: &str, window: &Window) -> bool {
-        self.chats.pane(pane_id).is_some_and(|pane| {
-            pane.text_focus
-                .as_ref()
-                .is_some_and(|focus| focus.is_focused(window))
-        })
+        self.chats
+            .pane(pane_id)
+            .is_some_and(|pane| pane.reading(window))
     }
 
     pub(in crate::chat) fn press_chat_text(

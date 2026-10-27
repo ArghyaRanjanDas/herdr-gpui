@@ -18,6 +18,7 @@ mod key_login;
 mod local_network;
 #[cfg(feature = "cloud")]
 mod rail;
+mod scope;
 #[cfg(unix)]
 mod setup_activation;
 #[cfg(unix)]

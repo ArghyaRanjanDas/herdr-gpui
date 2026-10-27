@@ -251,8 +251,7 @@ impl HerdrWindow {
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
         let body = match input {
             Some(input) => {
-                let mut font = self.config.ui.clone();
-                font.size = self.chat_text_size();
+                let font = self.chat_font();
                 input.update(cx, |input, cx| {
                     input.set_appearance(font, self.theme.clone(), cx)
                 });

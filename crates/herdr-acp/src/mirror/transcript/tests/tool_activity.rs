@@ -403,3 +403,28 @@ fn malformed_or_oversized_arguments_fall_back_without_execution() {
         assert!(matches!(tool.content.first(),Some(ToolContent::Text{text}) if text.len() <= TEXT));
     }
 }
+
+#[test]
+fn cut_tool_results_mark_truncation_and_keep_reported_failure() {
+    let long = "α".repeat(TEXT);
+    let wrapper = format!("Wall time: 0.1 seconds\nProcess exited with code 1\nOutput:\n{long}");
+    for output in [
+        json!({"exit_code":1,"output":long}),
+        json!(wrapper),
+        json!([{"type":"text","text":wrapper}]),
+    ] {
+        let transcript = project(
+            TranscriptAgent::Codex,
+            &[
+                call("c", "exec_command", json!({"cmd":"example"})),
+                result("c", output),
+            ],
+        );
+        assert!(transcript.truncated);
+        let tool = tool(&transcript, 0);
+        assert_eq!(tool.status, ToolStatus::Failed);
+        assert!(
+            matches!(tool.content.last(), Some(ToolContent::Text { text }) if text.len() <= TEXT)
+        );
+    }
+}

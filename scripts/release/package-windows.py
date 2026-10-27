@@ -5,7 +5,10 @@ Pure standard library so the Windows runner needs no zip tool. The layout
 mirrors package-linux.sh: the executable plus the same license and notice files.
 Beside herdr-gpui.exe, which is a console program because it is also the CLI,
 the zip carries herdr-gpui-launcher.exe, the windowed launcher that starts it without a
-console window from Explorer or the Start menu.
+console window from Explorer or the Start menu, herdr-acp.exe, which the app
+starts chats with, herdr-remote-control.exe, the remote control daemon the
+app runs as a scheduled task, and herdr-automate.exe, the automation daemon;
+the build leaves all three beside herdr-gpui.exe.
 """
 import argparse
 from pathlib import Path
@@ -40,6 +43,11 @@ def package(version, target, binary, launcher, output_dir, notices):
         raise ValueError("Binary file and existing output directory required")
     if not launcher.is_file():
         raise ValueError("Launcher file required")
+    companions = [binary.parent / name for name in ("herdr-acp.exe", "herdr-remote-control.exe",
+                                                         "herdr-automate.exe")]
+    for companion in companions:
+        if not companion.is_file():
+            raise ValueError(f"A {companion.name} beside the binary required")
     if not notices.is_file() or not notices.stat().st_size:
         raise ValueError("Nonempty third-party notices file required")
     name = f"Herdr-{version}-{target}"
@@ -53,6 +61,8 @@ def package(version, target, binary, launcher, output_dir, notices):
         with zipfile.ZipFile(partial, "w") as archive:
             add(archive, f"{name}/herdr-gpui.exe", binary.read_bytes())
             add(archive, f"{name}/herdr-gpui-launcher.exe", launcher.read_bytes())
+            for companion in companions:
+                add(archive, f"{name}/{companion.name}", companion.read_bytes())
             for source in LICENSES:
                 add(archive, f"{name}/licenses/{Path(source).name}", (ROOT / source).read_bytes())
             add(archive, f"{name}/licenses/THIRD-PARTY-NOTICES.txt", notices.read_bytes())

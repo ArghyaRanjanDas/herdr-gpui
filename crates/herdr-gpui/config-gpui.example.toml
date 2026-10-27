@@ -168,8 +168,10 @@ layout = "normal"
 # "pills" (rounded pills led by the agent's logo, the status after the title),
 # "outline" (bare titles, the chosen one in an outlined pill with its close
 # button), "underline" (flat titles, a bar under the chosen one), "cards"
-# (browser-like, the chosen tab joined to its terminal), or "compact" (icons
-# only, the chosen tab named). View > Tab Layout lists them all.
+# (browser-like, the chosen tab joined to its terminal), "curved" (the chosen
+# tab's curved body flows into content sitting in an inset card, and slides
+# between tabs), or "compact" (icons only, the chosen tab named). View > Tab
+# Layout lists them all.
 tab_layout = "classic"
 
 [palette]
@@ -514,7 +516,8 @@ size = 12
 # "generic" notifications say which chat needs you, without its text;
 # "excerpt" adds a short excerpt of the message.
 # notifications = "generic"
-# Forget a paired device that has not connected for this many days (1 to 365).
+# Forget a paired device that has not connected for this many days (1 to 365),
+# or 0 to keep it until it is revoked.
 # device_idle_days = 30
 
 # Native GitHub sign-in uses the public Herdr GPUI GitHub App by default.

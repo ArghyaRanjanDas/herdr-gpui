@@ -75,6 +75,20 @@ impl HerdrWindow {
     pub(in crate::chat) fn chat_text_size(&self) -> f32 {
         self.config.terminal.size + 2.
     }
+
+    /// Captions, hints, and labels beside the chat's prose: a step smaller,
+    /// never below a readable floor.
+    pub(in crate::chat) fn chat_small_text(&self) -> Pixels {
+        px((self.chat_text_size() - 1.).max(10.))
+    }
+
+    /// The interface font at the chat's prose size, for its native fields.
+    pub(in crate::chat) fn chat_font(&self) -> crate::config::FontConfig {
+        crate::config::FontConfig {
+            size: self.chat_text_size(),
+            ..self.config.ui.clone()
+        }
+    }
 }
 
 /// The logo of the agent a chat runs, by its display name.
@@ -467,14 +481,7 @@ impl HerdrWindow {
         let focus = self
             .chats
             .pane(pane_id)
-            .and_then(|pane| match pane.input() {
-                ChatInput::Composer => pane
-                    .composer
-                    .as_ref()
-                    .map(|input| input.read(cx).focus.clone()),
-                ChatInput::ReadOnly => pane.read_only_focus.clone(),
-                ChatInput::Terminal => None,
-            });
+            .and_then(|pane| pane.input_focus(cx));
         if let Some(focus) = focus {
             window.focus(&focus, cx);
         }
@@ -542,7 +549,7 @@ impl HerdrWindow {
         let layout = {
             let current = self.config.chat.layout;
             button("chat-layout")
-                .text_size(px((self.chat_text_size() - 1.).max(10.)))
+                .text_size(self.chat_small_text())
                 .text_color(rgb(theme.subtext()))
                 .child(current.label())
                 .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {

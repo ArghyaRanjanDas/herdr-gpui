@@ -358,7 +358,7 @@ fn install(
     let mut transcript = Transcript {
         agent: "Codex".into(), status: Status::Idle, read_only: options.read_only || existing,
         entries: vec![
-            Entry { id: EntryId(1), kind: EntryKind::User { text: "Show the result with equations, clear formatting, and controls I can explore.".into() } },
+            Entry { id: EntryId(1), kind: EntryKind::User { text: "Show the result with equations, clear formatting, and controls I can explore.".into(), files: 0 } },
             Entry { id: EntryId(2), kind: EntryKind::Agent { text: content } },
         ],
         ..Transcript::default()
@@ -387,7 +387,10 @@ fn install(
     if options.case == "user" {
         transcript.entries = vec![Entry {
             id: EntryId(1),
-            kind: EntryKind::User { text: USER.into() },
+            kind: EntryKind::User {
+                text: USER.into(),
+                files: 0,
+            },
         }];
     }
     if options.case.starts_with("live-") {
@@ -645,6 +648,7 @@ fn attachment_entries() -> Result<Vec<Entry>> {
             id: EntryId(4),
             kind: EntryKind::User {
                 text: "Can you explain this image and link the notes?".into(),
+                files: 0,
             },
         },
         Entry {

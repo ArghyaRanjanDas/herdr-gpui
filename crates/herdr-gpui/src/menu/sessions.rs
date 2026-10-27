@@ -560,15 +560,7 @@ impl HerdrWindow {
                 self.select_local_session(&name, cx);
                 // The picker's own follow-up: the sidebar follows the host that
                 // was just chosen, and another session's tree is not this one's.
-                self.device_filter = Some(self.endpoints[0].id.clone());
-                for scroll in &self.sidebar_scroll {
-                    scroll.set_offset(Point::default());
-                }
-                for revealed in &self.sidebar_revealed {
-                    revealed.set(None);
-                }
-                // The row a reveal left for the next frame is in the old list.
-                self.sidebar_pin_reveal.set(None);
+                self.set_device_scope(devices::DeviceScope::only(self.endpoints[0].id.clone()));
             }
             // A device row is one of that device's sessions, so it retargets the
             // device rather than adding an endpoint for every session it runs.
@@ -588,15 +580,7 @@ impl HerdrWindow {
                 // The local branch's own follow-up: the sidebar follows the host
                 // that was just chosen, and another session's tree is not this
                 // one's.
-                self.device_filter = Some(id);
-                for scroll in &self.sidebar_scroll {
-                    scroll.set_offset(Point::default());
-                }
-                for revealed in &self.sidebar_revealed {
-                    revealed.set(None);
-                }
-                // The row a reveal left for the next frame is in the old list.
-                self.sidebar_pin_reveal.set(None);
+                self.set_device_scope(devices::DeviceScope::only(id));
             }
         }
     }

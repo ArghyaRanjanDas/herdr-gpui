@@ -4,8 +4,10 @@
 #   irm https://herdrui.dev/install.ps1 | iex
 #
 # It downloads the zip for this machine from GitHub Releases, checks it against
-# the release's published SHA-256, installs herdr-gpui.exe and
-# herdr-gpui-launcher.exe under %LOCALAPPDATA%\Programs\Herdr UI, adds that
+# the release's published SHA-256, installs herdr-gpui.exe,
+# herdr-gpui-launcher.exe, herdr-acp.exe, the remote control daemon
+# herdr-remote-control.exe, and the automation daemon herdr-automate.exe
+# under %LOCALAPPDATA%\Programs\Herdr UI, adds that
 # directory to the user PATH so herdr-gpui works as a command, and creates a
 # Start menu shortcut to herdr-gpui-launcher.exe, the windowed launcher that
 # starts herdr-gpui.exe without a console window. It never installs, starts or
@@ -40,6 +42,23 @@
     if ($running) { throw "Herdr UI is running from $exe. Quit it, then run this command again; your Herdr sessions keep running." }
   }
   & $assertNotRunning
+  # The automation daemon the app starts keeps running after it quits, and
+  # Windows will not overwrite herdr-automate.exe while it runs either. Ask
+  # the installed copy to stop once its runs finish, wait for it to exit, and
+  # say whether it was running so an update can start it again. A daemon
+  # started from anywhere else is left alone.
+  $automate = Join-Path $dest 'herdr-automate.exe'
+  $stopAutomate = {
+    $running = { Get-Process -Name 'herdr-automate' -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $automate } }
+    if (-not (& $running)) { return $false }
+    Write-Host 'Stopping the automation daemon once its runs finish'
+    & $automate shutdown | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "The automation daemon at $automate did not stop. Stop its runs with herdr-automate stop, then run this command again." }
+    $deadline = (Get-Date).AddSeconds(30)
+    while ((& $running) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 200 }
+    if (& $running) { throw "The automation daemon at $automate is still running. Quit it, then run this command again." }
+    return $true
+  }
 
   # "Open in Herdr UI" on a folder, and on the background inside one: the
   # launcher runs `herdr-gpui open`, which opens the folder as Open Project
@@ -74,6 +93,7 @@
     if ($kept.Count -ne @($userPath -split ';' | Where-Object { $_ }).Count) {
       [Environment]::SetEnvironmentVariable('Path', $kept -join ';', 'User')
     }
+    & $stopAutomate | Out-Null
     if (Test-Path -LiteralPath $dest) { Remove-Item -Recurse -Force -LiteralPath $dest }
     if (Test-Path -LiteralPath $dest) { throw "Could not remove $dest." }
     Write-Host "Uninstalled Herdr UI from $dest. Settings and Herdr sessions were kept."
@@ -109,10 +129,17 @@
 
     Expand-Archive -Path $zip -DestinationPath $tmp
     & $assertNotRunning
+    $restartAutomate = & $stopAutomate
     New-Item -ItemType Directory -Force -Path $dest | Out-Null
     Copy-Item -Recurse -Force -Path (Join-Path $tmp "$name\*") -Destination $dest
   } finally {
     Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $tmp
+  }
+
+  # The new copy, as Herdr UI would start it for the scripts it lists.
+  if ($restartAutomate) {
+    & $automate start | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Warning 'Could not start the automation daemon again; Herdr UI starts it when it next opens.' }
   }
 
   $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')

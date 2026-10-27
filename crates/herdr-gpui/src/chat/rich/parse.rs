@@ -1,4 +1,4 @@
-use super::{Block, Fence, Inline, Kind, MathMode, Style, formula};
+use super::{Block, Fence, Inline, Kind, MathMode, Style, formula, math_input::Normalized};
 use crate::chat::visual::{Source, VisualId, Visuals};
 use pulldown_cmark::{Alignment, CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd};
 use std::{collections::HashMap, ops::Range, sync::Arc};
@@ -23,8 +23,7 @@ pub(in crate::chat) fn parse(text: &str, visuals: &mut Visuals) -> Option<Vec<Bl
     if text.split_whitespace().take(MAX_WORDS + 1).count() > MAX_WORDS {
         return None;
     }
-    let normalized = normalize_math(text);
-    let display = super::math_input::protect_display(&normalized);
+    let display = super::math_input::protect_display(&normalize_math(text));
     let options = Options::ENABLE_TABLES
         | Options::ENABLE_MATH
         | Options::ENABLE_STRIKETHROUGH
@@ -229,7 +228,7 @@ impl<'a> Builder<'a> {
                             .take(MAX_LANGUAGE)
                             .collect::<String>()
                             .to_ascii_lowercase(),
-                        closed_fence(&self.markdown[range]),
+                        closed_fence(&self.markdown[range], self.quote),
                     ),
                 };
                 self.code = Some(OpenCode {
@@ -460,9 +459,12 @@ fn push_linked_text(content: &mut Vec<Inline>, text: &str, style: &Style) {
 
 /// Accept the other common TeX delimiters, without rewriting code or HTML.
 /// Only complete pairs are converted, so unfinished streamed formulas remain source.
-pub(super) fn normalize_math(text: &str) -> String {
+/// The code and HTML it left alone are located in the result, so the display
+/// pass need not parse the Markdown again.
+pub(super) fn normalize_math(text: &str) -> Normalized {
     let protected = super::math_input::protected_ranges(text);
     let mut result = String::with_capacity(text.len());
+    let mut kept = Vec::with_capacity(protected.len());
     let mut cursor = 0;
     let mut ranges = protected.iter().cloned().peekable();
     // Index closers once. Searching each remaining suffix for an unmatched
@@ -489,7 +491,9 @@ pub(super) fn normalize_math(text: &str) -> String {
             && range.start <= cursor
         {
             let end = range.end.max(cursor);
+            let start = result.len();
             result.push_str(&text[cursor..end]);
+            kept.push(start..result.len());
             cursor = end;
             ranges.next();
             continue;
@@ -535,15 +539,23 @@ pub(super) fn normalize_math(text: &str) -> String {
         result.push(ch);
         cursor += ch.len_utf8();
     }
-    result
+    Normalized {
+        text: result,
+        protected: kept,
+    }
 }
 
-fn closed_fence(source: &str) -> bool {
+/// Whether a code block's source, nested `quotes` block quotes deep, ends
+/// with the line that closes its fence.
+fn closed_fence(source: &str, quotes: usize) -> bool {
     // Inside a container, the block's later lines keep the container's
-    // indentation, so both ends are read without it.
+    // indentation and quote markers, so both ends are read without them.
     let mut lines = source.lines();
     let Some(fence) = lines.next().and_then(|open| Fence::open(open.trim_start())) else {
         return false;
     };
-    lines.last().is_some_and(|close| fence.closes(close.trim()))
+    lines.last().is_some_and(|close| {
+        let close = super::quote::strip(close, quotes).unwrap_or(close);
+        fence.closes(close.trim())
+    })
 }

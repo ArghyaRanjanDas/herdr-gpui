@@ -3,8 +3,8 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    fs::File,
-    io::{self, Read, Seek, SeekFrom},
+    fs::{File, Metadata},
+    io::{Read, Seek, SeekFrom},
     path::PathBuf,
     time::SystemTime,
 };
@@ -15,6 +15,7 @@ use herdr_chat_protocol::{
 };
 use serde_json::Value;
 
+use super::{Error, Result};
 use crate::{
     agents::Agent,
     session::{MAX_ENTRIES, MAX_TRANSCRIPT_TEXT, keep_from},
@@ -101,7 +102,34 @@ pub(crate) struct Source {
     agent: TranscriptAgent,
     path: PathBuf,
     pinned: Option<File>,
-    stamp: Option<(u64, Option<SystemTime>)>,
+    stamp: Option<Stamp>,
+}
+
+/// What a file looked like when it was last parsed. A file without a
+/// modification time has no stamp and is parsed on every read.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Stamp {
+    len: u64,
+    modified: SystemTime,
+}
+
+impl Stamp {
+    fn of(metadata: &Metadata) -> Option<Self> {
+        Some(Self {
+            len: metadata.len(),
+            modified: metadata.modified().ok()?,
+        })
+    }
+}
+
+/// `metadata`, when it describes a regular file rather than a directory,
+/// device, or FIFO.
+fn regular(metadata: Metadata) -> Result<Metadata> {
+    if metadata.is_file() {
+        Ok(metadata)
+    } else {
+        Err(Error::NotRegularFile)
+    }
 }
 
 impl Source {
@@ -118,35 +146,24 @@ impl Source {
     /// swap another conversation into an already attached view.
     pub(crate) fn pinned(path: PathBuf, agent: TranscriptAgent, file: File) -> Self {
         Self {
-            agent,
-            path,
             pinned: Some(file),
-            stamp: None,
+            ..Self::new(path, agent)
         }
     }
 
-    pub(crate) fn read(&mut self) -> io::Result<Option<Transcript>> {
-        // Reject devices and FIFOs before opening, since opening a FIFO can
-        // wait for another process indefinitely.
-        if self.pinned.is_none() && !std::fs::metadata(&self.path)?.is_file() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "transcript must be a regular file",
-            ));
-        }
+    pub(crate) fn read(&mut self) -> Result<Option<Transcript>> {
         let mut file = match &self.pinned {
             Some(file) => file.try_clone()?,
-            None => File::open(&self.path)?,
+            None => {
+                // Reject devices and FIFOs before opening, since opening a
+                // FIFO can wait for another process indefinitely.
+                regular(std::fs::metadata(&self.path)?)?;
+                File::open(&self.path)?
+            }
         };
-        let metadata = file.metadata()?;
-        if !metadata.is_file() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "transcript must be a regular file",
-            ));
-        }
-        let stamp = (metadata.len(), metadata.modified().ok());
-        if stamp.1.is_some() && self.stamp == Some(stamp) {
+        let metadata = regular(file.metadata()?)?;
+        let stamp = Stamp::of(&metadata);
+        if stamp.is_some() && self.stamp == stamp {
             return Ok(None);
         }
         // ponytail: reparse at most 8 MiB only when the file changes. An
@@ -175,9 +192,18 @@ impl Source {
             bytes.drain(..skip);
         }
         let transcript = parse(self.agent, &bytes, offset);
-        self.stamp = Some(stamp);
+        self.stamp = stamp;
         Ok(Some(transcript))
     }
+}
+
+/// A Codex `session_meta` payload's session id. The observer verifies a file
+/// with this same reader, so both always agree on which session it holds.
+pub(crate) fn codex_session(payload: &Value) -> Option<&str> {
+    payload
+        .get("id")
+        .or_else(|| payload.get("session_id"))
+        .and_then(Value::as_str)
 }
 
 fn limited(text: &str, limit: usize) -> String {
@@ -189,34 +215,14 @@ fn string<'a>(value: &'a Value, key: &str) -> &'a str {
     value.get(key).and_then(Value::as_str).unwrap_or_default()
 }
 
-fn text(value: &Value) -> String {
-    if let Some(value) = value.as_str() {
-        return limited(value, TEXT);
-    }
-    let Some(blocks) = value.as_array() else {
-        return String::new();
-    };
-    let mut out = String::new();
-    for block in blocks.iter().take(BLOCKS) {
-        if matches!(
-            string(block, "type"),
-            "text" | "input_text" | "output_text" | "summary_text"
-        ) {
-            if !out.is_empty() {
-                out.push('\n');
-            }
-            out.push_str(&limited(
-                string(block, "text"),
-                TEXT.saturating_sub(out.len()),
-            ));
-            if out.len() >= TEXT {
-                break;
-            }
-        }
-    }
-    out
+/// The content block types whose `text` is shown as the message's words.
+const TEXT_BLOCKS: [&str; 4] = ["text", "input_text", "output_text", "summary_text"];
+
+fn text_block(block: &Value) -> bool {
+    TEXT_BLOCKS.contains(&string(block, "type"))
 }
 
+#[derive(Default)]
 struct Projection {
     activity: tool_activity::Activity,
     answered: HashMap<QuestionKey, herdr_chat_protocol::QuestionAnswer>,
@@ -226,6 +232,37 @@ struct Projection {
 }
 
 impl Projection {
+    /// `text` cut to `limit` bytes, noting in the transcript when it was cut.
+    fn clip(&mut self, text: &str, limit: usize) -> String {
+        self.transcript.truncated |= text.len() > limit;
+        limited(text, limit)
+    }
+
+    /// A record's words, a string or its text blocks one per line, within
+    /// [`TEXT`].
+    fn text(&mut self, value: &Value) -> String {
+        if let Some(value) = value.as_str() {
+            return self.clip(value, TEXT);
+        }
+        let Some(blocks) = value.as_array() else {
+            return String::new();
+        };
+        self.transcript.truncated |= blocks.len() > BLOCKS;
+        let mut out = String::new();
+        for block in blocks.iter().take(BLOCKS).filter(|block| text_block(block)) {
+            if out.len() >= TEXT {
+                self.transcript.truncated = true;
+                break;
+            }
+            if !out.is_empty() {
+                out.push('\n');
+            }
+            let room = TEXT.saturating_sub(out.len());
+            out.push_str(&self.clip(string(block, "text"), room));
+        }
+        out
+    }
+
     fn push(&mut self, id: EntryId, kind: EntryKind) {
         self.transcript.entries.push(Entry { id, kind });
     }
@@ -235,7 +272,7 @@ impl Projection {
             return;
         }
         let kind = match role {
-            Role::User => EntryKind::User { text },
+            Role::User => EntryKind::User { text, files: 0 },
             Role::Agent => EntryKind::Agent { text },
             Role::Thought => EntryKind::Thought { text },
         };
@@ -255,7 +292,7 @@ impl Projection {
         let tool = Tool {
             call_id: call.to_owned(),
             content: vec![ToolContent::Text {
-                text: limited(&input, TEXT),
+                text: self.clip(&input, TEXT),
             }],
             kind,
             locations,
@@ -267,23 +304,28 @@ impl Projection {
         self.push(id, EntryKind::Tool(tool));
     }
 
-    fn output(&mut self, call: &str, output: &Value, failed: bool) {
+    fn output(&mut self, call: &str, output: &Value, status: ToolStatus) {
         let Some(&index) = self.tools.get(call) else {
             return;
         };
-        self.activity
-            .output(index, output, failed, &mut self.transcript.entries);
+        let content = if output.is_object() {
+            self.clip(&output.to_string(), TEXT)
+        } else {
+            self.text(output)
+        };
+        self.activity.output(
+            index,
+            output,
+            &content,
+            status == ToolStatus::Failed,
+            &mut self.transcript.entries,
+        );
         let EntryKind::Tool(tool) = &mut self.transcript.entries[index].kind else {
             return;
         };
-        let output = if output.is_object() {
-            limited(&output.to_string(), TEXT)
-        } else {
-            text(output)
-        };
-        if !output.is_empty() {
+        if !content.is_empty() {
             tool.content.truncate(1);
-            tool.content.push(ToolContent::Text { text: output });
+            tool.content.push(ToolContent::Text { text: content });
         }
     }
 
@@ -295,11 +337,7 @@ impl Projection {
         let payload = &record["payload"];
         match string(record, "type") {
             "session_meta" => {
-                let session = payload
-                    .get("session_id")
-                    .or_else(|| payload.get("id"))
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
+                let session = codex_session(payload).unwrap_or_default();
                 self.session(session, string(payload, "cwd"));
             }
             "turn_context" => {
@@ -345,7 +383,10 @@ impl Projection {
             }
             "response_item" => match string(payload, "type") {
                 "message" => self.codex_message(id, record),
-                "reasoning" => self.message(id, Role::Thought, text(&payload["summary"])),
+                "reasoning" => {
+                    let summary = self.text(&payload["summary"]);
+                    self.message(id, Role::Thought, summary);
+                }
                 "function_call" => self.tool(
                     id,
                     string(payload, "call_id"),
@@ -358,9 +399,11 @@ impl Projection {
                     string(payload, "name"),
                     &payload["input"],
                 ),
-                "function_call_output" | "custom_tool_call_output" => {
-                    self.output(string(payload, "call_id"), &payload["output"], false)
-                }
+                "function_call_output" | "custom_tool_call_output" => self.output(
+                    string(payload, "call_id"),
+                    &payload["output"],
+                    ToolStatus::Completed,
+                ),
                 _ => {}
             },
             // event_msg often repeats response_item text. Read one canonical
@@ -441,7 +484,8 @@ impl Projection {
             match string(block, "type") {
                 "text" => self.claude_message(id, role, record, string(block, "text")),
                 "thinking" if role == Role::Agent => {
-                    self.message(id, Role::Thought, limited(string(block, "thinking"), TEXT))
+                    let thought = self.clip(string(block, "thinking"), TEXT);
+                    self.message(id, Role::Thought, thought);
                 }
                 "tool_use" if role == Role::Agent => self.tool(
                     id,
@@ -452,7 +496,11 @@ impl Projection {
                 "tool_result" if role == Role::User => self.output(
                     string(block, "tool_use_id"),
                     &block["content"],
-                    block["is_error"] == true,
+                    if block["is_error"] == true {
+                        ToolStatus::Failed
+                    } else {
+                        ToolStatus::Completed
+                    },
                 ),
                 _ => {}
             }
@@ -466,23 +514,21 @@ impl Projection {
             self.transcript.truncated |= content.len() > TEXT;
             self.push(id, notice);
         } else {
-            self.message(id, role, limited(content, TEXT));
+            let content = self.clip(content, TEXT);
+            self.message(id, role, content);
         }
     }
 }
 
 fn parse(agent: TranscriptAgent, bytes: &[u8], mut offset: u64) -> Transcript {
     let mut projection = Projection {
-        activity: tool_activity::Activity::default(),
-        answered: HashMap::new(),
         transcript: Transcript {
             agent: Agent::from(agent).display_name().to_owned(),
             read_only: true,
             truncated: offset > 0,
             ..Transcript::default()
         },
-        tools: HashMap::new(),
-        turns: turns::Turns::default(),
+        ..Projection::default()
     };
     let mut seen = HashSet::new();
     for line in bytes.split_inclusive(|byte| *byte == b'\n') {

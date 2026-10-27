@@ -21,9 +21,9 @@ fn inline_and_display_math_keep_their_place_and_identity_while_streaming() {
         matches!(&content[..], [Inline::Text(a, _), Inline::Math { .. }, Inline::Text(b, _)] if a == "Before " && b == " after.")
     );
     assert!(matches!(&blocks[1], Block::Math { source, .. } if &**source == r"\frac{a}{b}"));
-    let first = blocks[0].visuals()[0];
+    let first = blocks[0].visuals().next().unwrap();
     let extended = parse("Before $x^2$ after. More streamed prose", &mut visuals).unwrap();
-    assert_eq!(first, extended[0].visuals()[0]);
+    assert_eq!(first, extended[0].visuals().next().unwrap());
     let unfinished = parse("Before $x^", &mut visuals).unwrap();
     assert!(
         matches!(&unfinished[0], Block::Paragraph { content, .. }
@@ -180,14 +180,14 @@ fn excessive_word_and_table_layouts_use_source_fallback() {
 fn a_message_full_of_unmatched_math_openers_stays_literal_with_bounded_work() {
     let text = r"\(\[".repeat(65_536);
     let started = std::time::Instant::now();
-    assert_eq!(parse::normalize_math(&text), text);
+    assert_eq!(parse::normalize_math(&text).text, text);
     // A generous regression budget, not a rendering-performance benchmark.
     // The former repeated suffix search scans tens of GiB for this 256 KiB input.
     assert!(started.elapsed() < std::time::Duration::from_secs(5));
     let text = format!("{} `\\)` \\(α\\)", r"\[".repeat(32_768));
-    let normalized = parse::normalize_math(&text);
+    let normalized = parse::normalize_math(&text).text;
     assert!(normalized.ends_with("`\\)` $α$"));
-    assert_eq!(parse::normalize_math(r"\(x\\)y\)"), r"$x\\)y$");
+    assert_eq!(parse::normalize_math(r"\(x\\)y\)").text, r"$x\\)y$");
 }
 
 #[test]
@@ -236,11 +236,11 @@ fn rich_prose_links_explicit_files_but_never_code_or_bare_file_urls() {
 #[test]
 fn spaced_inline_delimiters_still_become_math() {
     assert_eq!(
-        parse::normalize_math(r"Area \( \pi r^2 \)."),
+        parse::normalize_math(r"Area \( \pi r^2 \).").text,
         r"Area $\pi r^2$."
     );
     assert_eq!(
-        parse::normalize_math(r"Empty \(  \) stays"),
+        parse::normalize_math(r"Empty \(  \) stays").text,
         r"Empty \(  \) stays"
     );
     let blocks = parse(r"The area is \( \pi r^2 \).", &mut Visuals::default()).unwrap();

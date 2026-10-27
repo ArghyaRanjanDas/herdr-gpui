@@ -4,8 +4,7 @@
 use super::super::{
     Target,
     chats::ChatInput,
-    prepared::{Body, Part},
-    widgets::{ActionMode, Component, Document, Form, Input, Value, bounded_input},
+    widgets::{ActionMode, Component, Document, Form, Input, Key, Value, bounded_input},
 };
 use crate::{
     HerdrWindow,
@@ -29,7 +28,7 @@ struct Request {
 }
 
 impl Request {
-    fn key(&self) -> (EntryId, usize) {
+    fn key(&self) -> Key {
         (self.entry, self.block)
     }
 
@@ -37,14 +36,8 @@ impl Request {
     /// session, a replaced message, or a removed card.
     fn live(&self, view: &HerdrWindow) -> bool {
         view.chats.pane(&self.target.pane_id).is_some_and(|pane| {
-            pane.target == self.target
-                && pane.session.since().map(|cursor| cursor.epoch)
-                    == self.cursor.map(|cursor| cursor.epoch)
-                && pane.prepared.body(self.entry).is_some_and(|body| {
-                    matches!(body.as_ref(), Body::Message(parts)
-                        if matches!(parts.get(self.block), Some(Part::Widget(document))
-                            if document.source == self.document.source))
-                })
+            pane.is_current(&self.target, self.cursor)
+                && pane.prepared.shows_widget(self.key(), &self.document)
         })
     }
 }
