@@ -27,6 +27,7 @@ const SETTLED: Duration = Duration::from_secs(30);
 /// One unreachable probe keeps the overlays; this many in a row drop them.
 const MAX_FAILURES: u8 = 2;
 mod batch;
+mod codex;
 mod error;
 pub(crate) use error::Error;
 
@@ -372,6 +373,15 @@ fn inspect_host(
             } = selected;
             let info = infos.get(pane.pane_id.as_str())?;
             let pid = agent_pid(agent, info, &processes)?;
+            let process = info
+                .foreground_processes
+                .iter()
+                .find(|process| process.pid == pid)?;
+            if agent == Agent::Codex
+                && !codex::session_matches(agent_args(agent, &process.argv)?, &session.value)
+            {
+                return None;
+            }
             let unchanged = last.snapshot.pane(&pane.pane_id).is_some_and(|after| {
                 pane.agent_session == after.agent_session && pane.agent == after.agent
             });
@@ -513,16 +523,20 @@ fn program(argv: &[String]) -> Option<&str> {
 }
 
 fn is_agent(agent: Agent, argv: &[String]) -> bool {
-    let Some(program) = program(argv) else {
-        return false;
-    };
+    agent_args(agent, argv).is_some()
+}
+
+/// Arguments of a native CLI or one of the launchers process selection knows.
+fn agent_args(agent: Agent, argv: &[String]) -> Option<&[String]> {
+    let program = program(argv)?;
     if program == agent.name() {
-        return true;
+        return Some(&argv[1..]);
     }
     if !matches!(program, "node" | "nodejs" | "bun") {
-        return false;
+        return None;
     }
-    argv.get(1).is_some_and(|script| match agent {
+    let script = argv.get(1)?;
+    let matches = match agent {
         Agent::Claude => {
             script.ends_with("/@anthropic-ai/claude-code/cli.js") || script.ends_with("/claude")
         }
@@ -530,7 +544,8 @@ fn is_agent(agent: Agent, argv: &[String]) -> bool {
             script.ends_with("/@openai/codex/bin/codex.js") || script.ends_with("/codex")
         }
         _ => false,
-    })
+    };
+    matches.then_some(&argv[2..])
 }
 
 #[cfg(test)]
