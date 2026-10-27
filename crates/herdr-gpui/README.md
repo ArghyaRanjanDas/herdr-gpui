@@ -76,6 +76,35 @@ The status dot pulses amber during local daemon startup and is red when disconne
 Healthy connections leave the status bar quiet; connection indicators live in the
 device picker. Startup, disconnection, and operation errors remain in the status bar.
 
+## macOS Git permission troubleshooting
+
+If Git in a local Herdr UI terminal reports `Operation not permitted`, even
+though the relevant Files & Folders permission is enabled, restarting the GUI
+may not restart the daemon that runs terminal commands. This recovery worked in
+one reported case; the underlying cause is not established, so it is not a
+guaranteed fix.
+
+For the default local session only:
+
+1. Save your work and stop any ongoing tasks. Stopping the daemon terminates its
+   running pane processes; restoring the layout does not preserve arbitrary
+   processes that were running in those panes.
+2. Quit Herdr UI.
+3. From another terminal, stop the default local daemon and reopen the app:
+
+   ```zsh
+   herdr server stop
+   open -a Herdr
+   ```
+
+4. Retry `git status` in the reopened Herdr terminal. If the error remains,
+   investigate the permission or repository issue separately; this restart does
+   not diagnose or guarantee a fix for other causes.
+
+These commands target the default local session, not a named session, SSH host,
+or other device. For named-session and other recovery guidance, see the
+[Herdr troubleshooting guide](https://herdr.dev/docs/troubleshooting/).
+
 For split terminal panes within a tab, **Focus follows mouse** is on by default.
 Disable it in **Settings > Tabs & panes > Panes**, or run
 `herdr-gpui config set focus_follows_mouse false`.
