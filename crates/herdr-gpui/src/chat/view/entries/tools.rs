@@ -83,8 +83,10 @@ impl HerdrWindow {
                             .text_font(&self.config.terminal)
                             .text_size(px(self.config.terminal.size - 1.))
                             .text_color(rgb(theme.subtext()))
-                            .child(self.render_chat_plain_text(
-                                self.chat_text_scope(pane_id, entry, Region::Label),
+                            .child(self.render_chat_text(
+                                pane_id,
+                                entry,
+                                Region::Label,
                                 Cell::default(),
                                 label,
                                 cx,
@@ -139,15 +141,19 @@ impl HerdrWindow {
                         .text_size(small)
                         .text_font(&self.config.terminal)
                         .text_color(rgb(theme.subtext()))
-                        .child(self.render_chat_plain_text(
-                            self.chat_text_scope(pane_id, entry, Region::ToolTitle),
+                        .child(self.render_chat_text(
+                            pane_id,
+                            entry,
+                            Region::ToolTitle,
                             Cell::default(),
                             tool.title.clone(),
                             cx,
                         ))
                         .children(tool.locations.iter().enumerate().map(|(index, location)| {
-                            self.render_chat_plain_text(
-                                self.chat_text_scope(pane_id, entry, Region::ToolLocations),
+                            self.render_chat_text(
+                                pane_id,
+                                entry,
+                                Region::ToolLocations,
                                 Cell::row(index),
                                 location.clone(),
                                 cx,
@@ -190,12 +196,10 @@ impl HerdrWindow {
                                             .truncate()
                                             .text_size(small)
                                             .text_color(rgb(theme.subtext()))
-                                            .child(self.render_chat_plain_text(
-                                                self.chat_text_scope(
-                                                    pane_id,
-                                                    entry,
-                                                    Region::ToolPreviewLabel(index),
-                                                ),
+                                            .child(self.render_chat_text(
+                                                pane_id,
+                                                entry,
+                                                Region::ToolPreviewLabel(index),
                                                 Cell::default(),
                                                 preview.label.clone(),
                                                 cx,
@@ -349,8 +353,10 @@ impl HerdrWindow {
                     .text_size(small)
                     .text_color(rgb(theme.subtext()))
                     .truncate()
-                    .child(self.render_chat_plain_text(
-                        self.chat_text_scope(pane_id, entry, Region::ToolLocations),
+                    .child(self.render_chat_text(
+                        pane_id,
+                        entry,
+                        Region::ToolLocations,
                         Cell::row(index),
                         safe_text(location, 300),
                         cx,

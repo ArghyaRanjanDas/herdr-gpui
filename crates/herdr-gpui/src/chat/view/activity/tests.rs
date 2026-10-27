@@ -126,6 +126,7 @@ fn current_tool_details_are_bounded_and_do_not_cross_turn_boundaries() {
     transcript.entries.push(Entry {
         id: EntryId(3),
         kind: EntryKind::User {
+            files: 0,
             text: "New request".into(),
         },
     });
