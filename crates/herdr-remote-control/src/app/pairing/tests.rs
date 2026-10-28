@@ -1,8 +1,11 @@
 use super::*;
 use crate::control::DeviceId;
 
+mod addresses;
+
 fn offer(id: &str) -> Offer {
     Offer {
+        address_details: Default::default(),
         id: PairingId(id.into()),
         url: format!("https://192.168.1.20:7443/pair#t={id}&fp=5F:2A"),
         fingerprint: "5F:2A".into(),
