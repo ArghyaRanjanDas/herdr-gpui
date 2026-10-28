@@ -33,7 +33,7 @@ fn connected_image_paste_key_down_ctrl_v_and_cmd_v(cx: &mut gpui::TestAppContext
                         // Remote clipboard reads reserve FIFO order even for text-only
                         // Ctrl-V. Local Ctrl-V stays a key for agents that read the
                         // clipboard themselves; local Cmd-V bridges images.
-                        let native_paste = key == "cmd-v" && (image || !cfg!(target_os = "linux"));
+                        let native_paste = key == "cmd-v";
                         assert_eq!(
                             view.pending_images.len(),
                             usize::from(native_paste || (remote && key == "ctrl-v"))
@@ -161,7 +161,7 @@ fn connected_image_paste_native_text_during_blocked_image_and_second_image_busy(
         assert_eq!(
             view.local_error,
             Some(format!(
-                "Image not sent: {}",
+                "Paste not sent: {}",
                 herdr_client::Error::Clipboard(herdr_client::clipboard::Error::Busy)
             ))
         );
@@ -232,7 +232,7 @@ fn connected_image_paste_native_preparations_stay_bounded_across_reset(
             assert_eq!(
                 view.local_error,
                 Some(format!(
-                    "Image not sent: {}",
+                    "Paste not sent: {}",
                     herdr_client::Error::Clipboard(herdr_client::clipboard::Error::Busy)
                 ))
             );
