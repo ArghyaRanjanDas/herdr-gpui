@@ -81,12 +81,20 @@ impl HerdrWindow {
         let body = chat.prepared.body(entry.id);
         let content = match &entry.kind {
             EntryKind::User { text, .. } | EntryKind::Agent { text } => {
+                // A layout may set the user's prompts in a quieter voice.
+                let size = match &entry.kind {
+                    EntryKind::User { .. } => {
+                        layout_for(self.config.chat.layout).prompt_text(&self.chat_look())
+                    }
+                    _ => self.chat_text_size(),
+                };
                 let message = match body.as_deref() {
                     Some(Body::Message(parts)) => self.render_chat_message(
                         pane_id,
                         entry.id,
                         parts,
                         &chat.prepared.visuals,
+                        size,
                         cx,
                     ),
                     Some(Body::Summary(summary)) => {
@@ -147,7 +155,7 @@ impl HerdrWindow {
             ),
             EntryKind::Image { author, .. } => match body.as_deref() {
                 Some(Body::Image(id)) => {
-                    self.render_chat_image(*author, *id, &chat.prepared.visuals)
+                    self.render_chat_image(pane_id, *author, *id, &chat.prepared.visuals, cx)
                 }
                 _ => div(),
             },
@@ -176,6 +184,11 @@ impl HerdrWindow {
                 .and_then(|entry| side(&entry.kind))
         };
         let transcript = chat.session.transcript();
+        // The current turn starts at the user's latest prompt.
+        let current = entries
+            .iter()
+            .rposition(|entry| matches!(entry.kind, EntryKind::User { .. }))
+            .is_none_or(|start| index >= start);
         let row = Row {
             entry,
             previous: near(index.checked_sub(1)),
@@ -183,6 +196,7 @@ impl HerdrWindow {
             agent: chat.session.agent(),
             live: index + 1 == entries.len()
                 && transcript.status == herdr_chat_protocol::Status::Working,
+            current,
             content,
         };
         layout_for(self.config.chat.layout).row(row, &self.chat_look())
@@ -276,8 +290,8 @@ impl HerdrWindow {
                     .min_w_0()
                     .truncate()
                     .text_font(&self.config.terminal)
-                    .text_size(px(self.config.terminal.size - 1.))
-                    .text_color(rgb(theme.subtext()))
+                    .text_size(self.chat_tool_text())
+                    .text_color(rgb(theme.muted))
                     .child(self.render_chat_text(
                         pane_id,
                         entry,
@@ -302,7 +316,9 @@ impl HerdrWindow {
             .children(
                 page_written(tool).map(|path| self.render_chat_file_page(pane_id, entry, path, cx)),
             )
-            .children(self.render_chat_tool_glance(entry, tool, summary, expanded, visuals))
+            .children(
+                self.render_chat_tool_glance(pane_id, entry, tool, summary, expanded, visuals, cx),
+            )
             .when(expanded, |card| {
                 card.child(
                     div()
@@ -311,9 +327,9 @@ impl HerdrWindow {
                         .min_w_0()
                         .w_full()
                         .overflow_x_scroll()
-                        .text_size(small)
+                        .text_size(self.chat_tool_text())
                         .text_font(&self.config.terminal)
-                        .text_color(rgb(theme.subtext()))
+                        .text_color(rgb(theme.muted))
                         .child(self.render_chat_text(
                             pane_id,
                             entry,
@@ -364,17 +380,20 @@ impl HerdrWindow {
     /// What a tool call shows without being opened: each file's changed line
     /// counts and its pictures always, and while folded, its first locations
     /// and output lines. Opening it shows the full text in their place.
+    #[allow(clippy::too_many_arguments)]
     fn render_chat_tool_glance(
         &self,
+        pane_id: &str,
         entry: herdr_chat_protocol::EntryId,
         tool: &Tool,
         summary: Option<&ToolSummary>,
         expanded: bool,
         visuals: &Visuals,
+        cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         let theme = &self.theme;
         let hues = Hues::of(theme);
-        let small = self.chat_small_text();
+        let small = self.chat_tool_text();
         let note = |text: String| {
             div()
                 .text_size(small)
@@ -392,6 +411,7 @@ impl HerdrWindow {
                 .flex()
                 .gap(px(6.))
                 .text_size(small)
+                .text_color(rgb(theme.muted))
                 .child(div().min_w_0().truncate().child(safe_text(&diff.path, 300)))
                 .child(
                     div()
@@ -414,22 +434,21 @@ impl HerdrWindow {
                     .flex_wrap()
                     .gap(px(6.))
                     .py(px(2.))
-                    .children(
-                        summary
-                            .images
-                            .iter()
-                            .map(|id| self.render_chat_visual(*id, visuals, Frame::ToolImage)),
-                    )
+                    .children(summary.images.iter().map(|id| {
+                        self.render_chat_visual(pane_id, *id, visuals, Frame::ToolImage, cx)
+                    }))
                     .into_any_element(),
             );
         }
-        if expanded {
+        // Opened, the details show it all; some layouts keep a folded call
+        // to its one line.
+        if expanded || !layout_for(self.config.chat.layout).tool_preview() {
             return glance;
         }
         glance.extend(tool.locations.iter().take(LOCATIONS).map(|location| {
             div()
                 .text_size(small)
-                .text_color(rgb(theme.subtext()))
+                .text_color(rgb(theme.muted))
                 .truncate()
                 .child(safe_text(location, 300))
                 .into_any_element()
@@ -443,7 +462,7 @@ impl HerdrWindow {
                 .debug_selector(move || format!("chat-tool-preview-{}", entry.0))
                 .text_size(small)
                 .text_font(&self.config.terminal)
-                .text_color(rgb(theme.subtext()))
+                .text_color(rgb(theme.muted))
                 .whitespace_nowrap()
                 .overflow_hidden()
                 .child(line.clone())

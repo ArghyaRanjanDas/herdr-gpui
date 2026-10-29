@@ -226,6 +226,7 @@ embedded_icons! {
     // keep-sorted start
     "arrow-left.svg",
     "arrow-right.svg",
+    "arrow-up.svg",
     "automations.svg",
     "beads.svg",
     "bell.svg",

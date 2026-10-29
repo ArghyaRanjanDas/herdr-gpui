@@ -25,7 +25,7 @@ pub(crate) use commands::run_window_command;
 pub(crate) use flash::Flash;
 pub(crate) use zen::slide_left;
 mod function_keys;
-mod image_source;
+pub(crate) mod image_source;
 mod images;
 mod input;
 mod layout_save;
