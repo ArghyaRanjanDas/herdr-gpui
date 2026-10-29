@@ -158,7 +158,7 @@ pub(super) fn agent_names(agent: &ClientShellAgent) -> [Option<&str>; 4] {
 /// otherwise the title an unnamed pane already carries. Both are untrusted
 /// daemon and terminal text, so the name is safe, bounded text, and none when
 /// it is blank or only repeats the agent's `name`.
-pub(super) fn pane_name(
+pub(crate) fn pane_name(
     agent: &ClientShellAgent,
     snapshot: &ClientShellSnapshot,
     name: &str,
