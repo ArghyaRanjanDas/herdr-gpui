@@ -1,0 +1,153 @@
+{
+  "phase": "after",
+  "binary_source_commit": "c4a2cffaa9174df7a1c6cdc03be1cd3808cb80d8",
+  "binary_source_manifest_sha256": "6a5f9e99d19a4499a6b2717b8f09b007ffbbdd7bedacf9e2f89196609abb619c",
+  "binary_sha256": "25e4d965128fc19e6a6365b389aa086eae5675fa83bd196b2cbf1aef9759e4a8",
+  "driver_hashes": {
+    "scripts/check-rich-chat-native.py": "7f5e67801569efb8f260a2b8bd4216ba00d2fdfe98a3b9f4136811d0e56afe56",
+    "scripts/rich_chat_native_input.py": "4d0a8b7eee05e40e641668de9993cbf03741184ca96facf077f85c1b6f1eb50f",
+    "scripts/rich_chat_resize.py": "254e0b9c237fec98a3f89332263542fb3661511092af28a3a7d27ca1b5465758",
+    "crates/herdr-gpui/src/chat/preview.rs": "b8cdfe024fe74f09d8db9f07aa5385754f32d54d0fd43bb8a96c2f0f90f823af",
+    "crates/herdr-gpui/src/chat/preview/tools.rs": "ea29173fe7ea9e7edf95fff5029dad47406026c32e49b95e606051be54c27359",
+    "crates/herdr-gpui/src/chat/preview/disclosure.rs": "dcc9dbf830f158cfaec82d8e3e47b6ad5c65c752118b6d23a25575d409e97173",
+    "scripts/rich_chat_disclosure.py": "49c7267fb44171a87805ce554e74a7f62895db46a7848eceaee5413b6cafa911",
+    "crates/herdr-gpui/src/chat/preview/jump.rs": "4ec319737e689825f5d23872479a85f780044d347ded84460f252f0de4a0ee0a",
+    "scripts/rich_chat_jump.py": "b90a59346f0d0c7ac347cb4379d22029935d19c0a52bdc7dd06cf3b47b3802f5",
+    "crates/herdr-gpui/src/chat/view/jump.rs": "70182b7eb9d989bfed344878ac97bacbd55fd159b215770f819cbc9948469793",
+    "assets/icons/arrow-down.svg": "f479f54ec954121315ea28a9fac8e5e62f4e9cd4ef974eddad5d5a1d5da2fb8f",
+    "crates/herdr-gpui/src/icons.rs": "aeb00851b9ee1f947dd9b5730e76cdffb70e555e4c1585feca79a919f97c43f7",
+    "crates/herdr-gpui/src/chat/preview/activity.rs": "c4b1c4d4a4306e2613c5cb4ab0928db50815f53727eb1881f0cf539c4320bd43"
+  },
+  "wrapper_sha256": "65b9a62b948c19f3871fb142404a3a4aa7dc289b4ffd1b06520f125613188107",
+  "publication_capture_sha256": "85f592db0ad044918123c57918c35ee1f6edf96dcfc12b33ec19d11542d65c13",
+  "scope": "Synthetic fixture only; no connected agent, daemon, or desktop interaction.",
+  "captures": [
+    {
+      "case": "math",
+      "theme": "dark",
+      "size": "narrow",
+      "layout": "default bubbles",
+      "status": "passed",
+      "seconds": 5.16
+    },
+    {
+      "case": "code",
+      "theme": "light",
+      "size": "wide",
+      "layout": "default bubbles",
+      "status": "passed",
+      "seconds": 4.34
+    },
+    {
+      "case": "tool-disclosure",
+      "theme": "dark",
+      "size": "wide",
+      "layout": "default bubbles",
+      "status": "passed",
+      "seconds": 21.76
+    },
+    {
+      "case": "tool-disclosure",
+      "theme": "light",
+      "size": "narrow",
+      "layout": "default bubbles",
+      "status": "passed",
+      "seconds": 21.61
+    },
+    {
+      "case": "tools-open",
+      "theme": "dark",
+      "size": "wide",
+      "layout": "default bubbles",
+      "status": "passed",
+      "seconds": 21.75
+    },
+    {
+      "case": "tools-open",
+      "theme": "light",
+      "size": "narrow",
+      "layout": "default bubbles",
+      "status": "passed",
+      "seconds": 21.55
+    },
+    {
+      "case": "input-resize",
+      "theme": "dark",
+      "size": "wide",
+      "layout": "default bubbles",
+      "status": "passed",
+      "seconds": 16.65
+    },
+    {
+      "case": "selection",
+      "theme": "dark",
+      "size": "narrow",
+      "layout": "default bubbles",
+      "status": "passed",
+      "seconds": 16.31
+    },
+    {
+      "case": "live-working",
+      "theme": "dark",
+      "size": "narrow",
+      "layout": "default bubbles",
+      "status": "passed",
+      "seconds": 4.37
+    },
+    {
+      "case": "live-working",
+      "theme": "dark",
+      "size": "narrow",
+      "layout": "imessage",
+      "status": "passed",
+      "seconds": 4.47
+    },
+    {
+      "case": "running-open",
+      "theme": "light",
+      "size": "narrow",
+      "layout": "default bubbles",
+      "status": "passed",
+      "seconds": 4.02
+    },
+    {
+      "case": "questions",
+      "theme": "dark",
+      "size": "narrow",
+      "layout": "default bubbles",
+      "status": "passed",
+      "seconds": 4.28
+    },
+    {
+      "case": "existing",
+      "theme": "light",
+      "size": "narrow",
+      "layout": "default bubbles",
+      "status": "passed",
+      "seconds": 4.62
+    }
+  ],
+  "visual_review": "Representative equations, syntax/diff cards, dark/light and narrow layouts, iMessage typing, background table and centered Jump to latest reviewed on the exact-source native captures.",
+  "published_images": {
+    "diff-dark.png": {
+      "fixture_capture": "tools-open-dark-wide/native-window.png",
+      "sha256": "c28ddc58cf273b0d74191e4c69b918863ac19f7a4ce62732693e8931f87b5a55"
+    },
+    "diff-light-narrow.png": {
+      "fixture_capture": "tool-disclosure-light-narrow/native-window.png",
+      "sha256": "1d7652ee7f73c5c6dc4881300efddd460fc1f947614d4a0e6a7c2b8b93cbda72"
+    },
+    "jump-dark.png": {
+      "fixture_capture": "tools-open-dark-wide/jump-centered-window.png",
+      "sha256": "6607712f1fcd81feb63a1ca3f4f20257ae2d8d5ce07cb767b92b31bcf57ccddf"
+    },
+    "imessage-dark-narrow.png": {
+      "fixture_capture": "live-working-dark-narrow-imessage/native-window.png",
+      "sha256": "e20a24cbdc9287511a5a868d12a53fa49dda3e65b797f791e0990f62996d9703"
+    },
+    "background-light-narrow.png": {
+      "fixture_capture": "running-open-light-narrow/native-window.png",
+      "sha256": "79c2af1c9c53eec2da95e1240f47da5c5ace306f9e91f015cf0034af60864a7e"
+    }
+  }
+}
