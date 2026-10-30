@@ -126,18 +126,20 @@ expand to show retained text and diffs.
 
 ## Streaming and tool activity
 
-Every layout has an activity strip above the input. Running work is blue,
-thinking purple, requests for input amber, completed turns green, and failures
-red. Labels and icons accompany the colors. Active work animates three dots;
-waiting, idle and disconnected states do not. Animation uses the app's motion
-settings and is capped at 12 frames per second.
+Every layout has an activity strip above the input. Its standard indicator uses
+blue for running work, purple for thinking, amber for requests for input, green
+for completed turns, and red for failures. Labels and icons accompany the colors.
+Active work animates three dots; iMessage instead keeps its native typing cue,
+with the shared metrics below it. Waiting, idle and disconnected states do not
+animate. Animations use the app's motion settings; the three-dot indicator is
+capped at 12 frames per second.
 
 Elapsed time appears only with a reported turn start and a live working state.
 Context usage is labeled separately from the previous turn's reported output
 and thinking tokens. Unknown counts are omitted. Existing terminal sessions
 use the daemon's activity state: saved thoughts or unfinished tool records
-cannot make an idle agent appear busy. Their strip says **Working** rather
-than guessing the current thinking/tool phase from historical entries. Codex
+cannot make an idle agent appear busy. Their working phase remains **Working**
+rather than guessing the current thinking/tool phase from historical entries. Codex
 logs can supply turn clocks and completed counts; Claude's recorded duration
 does not establish a successful outcome or a live clock.
 

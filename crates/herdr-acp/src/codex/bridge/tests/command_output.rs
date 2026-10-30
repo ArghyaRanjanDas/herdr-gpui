@@ -36,7 +36,7 @@ fn content(out: &Out) -> Vec<&str> {
 fn apply(projector: &mut Projector, transcript: &mut Transcript, outs: &[Out]) {
     for out in outs {
         let event = serde_json::from_value(update(out).clone()).unwrap();
-        for change in projector.update(transcript, event) {
+        for change in projector.update(transcript, event, 0) {
             transcript.apply(&change).unwrap();
         }
     }
