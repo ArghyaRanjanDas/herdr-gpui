@@ -231,3 +231,67 @@ fn only_a_known_shell_in_its_thread_can_finish_during_a_later_turn() {
     assert_eq!(bridge.turn.as_deref(), Some("turn-2"));
     assert!(notify(&mut bridge, "item/completed", done).is_empty());
 }
+
+#[test]
+fn a_reused_background_id_cannot_bypass_the_new_commands_turn_fence() {
+    let mut bridge = opened();
+    prompt(&mut bridge, 2);
+    let item = json!({"type": "commandExecution", "id": "exec-reused",
+        "command": "serve", "status": "inProgress"});
+    notify(
+        &mut bridge,
+        "item/started",
+        json!({
+            "threadId": THREAD, "turnId": "turn-1", "item": item,
+        }),
+    );
+    notify(
+        &mut bridge,
+        "turn/completed",
+        json!({
+            "threadId": THREAD, "turn": {"id": "turn-1", "status": "completed"},
+        }),
+    );
+    prompt(&mut bridge, 3);
+    notify(
+        &mut bridge,
+        "turn/started",
+        json!({
+            "threadId": THREAD, "turn": {"id": "turn-2"},
+        }),
+    );
+    let started = notify(
+        &mut bridge,
+        "item/started",
+        json!({
+            "threadId": THREAD, "turnId": "turn-2", "item": item,
+        }),
+    );
+    assert_eq!(started.len(), 1);
+    let old = notify(
+        &mut bridge,
+        "item/completed",
+        json!({
+            "threadId": THREAD, "turnId": "turn-1", "item": {
+                "type": "commandExecution", "id": "exec-reused", "command": "serve",
+                "status": "completed", "aggregatedOutput": "old final", "exitCode": 0,
+            },
+        }),
+    );
+    assert!(
+        old.is_empty(),
+        "an old background run cannot finish its replacement"
+    );
+    let output = notify(
+        &mut bridge,
+        "item/commandExecution/outputDelta",
+        json!({
+            "threadId": THREAD, "turnId": "turn-2", "itemId": "exec-reused", "delta": "new output",
+        }),
+    );
+    assert_eq!(
+        update(&output[0])["content"][0]["content"]["text"],
+        "new output"
+    );
+    assert!(bridge.prompt.is_some());
+}
