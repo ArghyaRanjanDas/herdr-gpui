@@ -208,6 +208,8 @@ pub enum Error {
     NotAGitRepository { path: PathBuf },
     #[error("Not connected to a daemon.")]
     NotConnected,
+    #[error(transparent)]
+    NotificationMutes(#[from] crate::notification_mutes::Error),
     #[error("The current directory is not in a Git checkout.")]
     NotInCheckout,
     #[error("Could not read the orchestrator's database: {0}")]

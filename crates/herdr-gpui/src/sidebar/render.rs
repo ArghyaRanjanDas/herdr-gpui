@@ -7,9 +7,7 @@ use super::{
     agents::Indicators,
     agents_sort,
     cell::{Cell, Fold, RowContext, RowData, WorkspaceRow, layout_for},
-    label_text,
-    layout::{self, SidebarLook},
-    line_height,
+    label_text, layout, line_height,
     reorder::{self, Plan},
     row::{RowIcon, RowLift, RowTree},
     sidebar_width, sticky,
@@ -19,17 +17,17 @@ use super::{
 };
 use crate::direction::Logical;
 use crate::{
-    Command, HerdrWindow, NavigationTarget,
-    avatars::Checkout,
-    config::{AgentsPlacement, FontConfig, Theme},
+    Command, HerdrWindow, NavigationTarget, avatars::Checkout, config::AgentsPlacement,
     fonts::StyledFont,
 };
 use gpui::{prelude::*, *};
 
 mod agent_rows;
 mod device_tree;
+mod header;
 mod nested_agents;
 
+pub(super) use header::header;
 pub(crate) use nested_agents::NestedReveal;
 
 impl HerdrWindow {
@@ -181,6 +179,7 @@ impl HerdrWindow {
             let Some(snapshot) = &live.snapshot else {
                 continue;
             };
+            let silenced = crate::notification_mutes::Mutes::silenced_in(cx, endpoint, snapshot);
             let pr_view = self.endpoint_pr_view(endpoint_index);
             let collapsed_repos = if endpoint_index == 0 {
                 &self.collapsed_repos
@@ -287,6 +286,7 @@ impl HerdrWindow {
                 } else {
                     workspace.agent_status
                 };
+                let muted = silenced.workspace(&workspace.workspace_id);
                 let lines = if spaces_custom {
                     tokens::space_rows(
                         &self.config.sidebar_layout.spaces,
@@ -422,7 +422,7 @@ impl HerdrWindow {
                                 self.config.sidebar_style.change_counts,
                             ),
                             (&self.teleport_marks, &endpoint.id),
-                            note.as_deref(),
+                            (note.as_deref(), muted),
                             theme,
                         ),
                         removing: removing_row,
@@ -509,6 +509,7 @@ impl HerdrWindow {
                         label,
                         linked,
                         shown_status,
+                        muted,
                         row_cx.host,
                     );
                     self.workspace_item(row, name, selected && workspace.focused, folds, cx)
@@ -974,26 +975,4 @@ impl HerdrWindow {
                 .size_full(),
             )
     }
-}
-
-pub(super) fn header(
-    label: &'static str,
-    font: &FontConfig,
-    theme: &Theme,
-    look: SidebarLook,
-) -> Div {
-    div()
-        .debug_selector(|| format!("header-{label}"))
-        .flex_none()
-        .h(px(line_height(font) + 2. * look.density.header_padding()))
-        .px(px(look.content_x()))
-        .row()
-        .items_center()
-        .text_size(px(font.size))
-        .text_color(rgb(theme.muted))
-        .child(
-            div()
-                .debug_selector(|| format!("header-label-{label}"))
-                .child(label_text(&look.header_label(label))),
-        )
 }
