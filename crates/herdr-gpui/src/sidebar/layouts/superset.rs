@@ -253,6 +253,7 @@ impl RowLayout for Superset {
         let changes = badge.as_ref().and_then(|badge| badge.counts.as_ref());
         let dirty = badge.as_ref().is_some_and(|badge| badge.dirty);
         let teleported = badge.as_ref().is_some_and(|badge| badge.teleported);
+        let muted = badge.as_ref().is_some_and(|badge| badge.muted);
         let dirty_size = (line_height(cx.font) * 0.75).round().min(15.);
         let size = m.icon * GLYPH;
         let icon_color = if state.selected {
@@ -321,6 +322,9 @@ impl RowLayout for Superset {
             })
         };
         let line = line
+            .when(muted, |line| {
+                line.fixed(dirty_size, parts::muted(label, dirty_size, theme))
+            })
             .when(teleported, |line| {
                 line.fixed(dirty_size, parts::teleported(label, dirty_size, theme))
             })

@@ -16,6 +16,7 @@ mod fan_out;
 mod git;
 mod github;
 pub(crate) mod gitlab;
+mod mute;
 mod open_checkout;
 mod open_link;
 mod page;

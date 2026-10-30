@@ -8,7 +8,7 @@ use super::{
     super::{
         cell::{AgentRow, RowContext, RowLayout, RowState, WorkspaceRow},
         line_height,
-        row::{Elbow, RowKind, RowTree, TokenLook, guide, left_behind, token_column},
+        row::{Elbow, RowBadge, RowKind, RowTree, TokenLook, guide, left_behind, token_column},
         tokens::ResolvedToken,
         wash::HostMark,
     },
@@ -176,9 +176,13 @@ impl RowLayout for Orca {
         let pr = badge.as_ref().and_then(|badge| badge.pr.as_ref());
         let dirty = badge.as_ref().is_some_and(|badge| badge.dirty);
         let teleported = badge.as_ref().is_some_and(|badge| badge.teleported);
+        let muted = badge.as_ref().is_some_and(|badge| badge.muted);
         let dirty_size = (line * 0.7).round().min(14.);
         let worktree = parts::worktree(label, &icon, dirty_size);
-        let meta = branch.is_some() || cx.host.is_some() || badge.is_some() || upstream.is_some();
+        let meta = branch.is_some()
+            || cx.host.is_some()
+            || badge.as_ref().is_some_and(RowBadge::checkout_marks)
+            || upstream.is_some();
         // The repository's own checkout is the group's primary card.
         let primary = (grouped && tree == RowTree::None).then(|| {
             div()
@@ -211,6 +215,10 @@ impl RowLayout for Orca {
                         width,
                         cx,
                     )
+                })
+                .when(muted, |text| {
+                    let mark = parts::muted(label, dirty_size, theme);
+                    text.fixed(dirty_size, parts::first_line(dirty_size, mark, cx))
                 })
                 .when_some(primary, |text, primary| {
                     let width = (7. * glyph).ceil() + 10.;
@@ -256,6 +264,9 @@ impl RowLayout for Orca {
                     }),
                 label,
             )
+            .when(muted, |line| {
+                line.fixed(dirty_size, parts::muted(label, dirty_size, theme))
+            })
             .when_some(primary, |line, primary| {
                 let width = (7. * glyph).ceil() + 10.;
                 line.fixed(width, primary.w(px(width)))

@@ -355,6 +355,11 @@ pub(super) fn teleported(key: &str, size: f32, theme: &Theme) -> Div {
     crate::icons::teleported(theme, size).debug_selector(|| format!("teleported-{key}"))
 }
 
+/// A workspace whose notifications the user muted.
+pub(super) fn muted(key: &str, size: f32, theme: &Theme) -> Div {
+    crate::icons::muted(theme, size).debug_selector(|| format!("muted-{key}"))
+}
+
 /// The branch glyph a linked worktree standing alone leads its name with,
 /// in the hue its icon carries. These rows have no avatar slot, so every
 /// other icon draws nothing.
