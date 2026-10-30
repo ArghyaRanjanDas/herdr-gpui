@@ -5,15 +5,15 @@ fn both_collaboration_call_spellings_describe_the_action_with_separate_prompt_de
     let mut bridge = opened();
     for kind in ["collabToolCall", "collabAgentToolCall"] {
         for (tool, label) in [
-            ("spawnAgent", "Start agent"),
-            ("sendInput", "Send agent input"),
-            ("resumeAgent", "Resume agent"),
-            ("wait", "Wait for agents"),
-            ("closeAgent", "Close agent"),
-            ("sendMessage", "Send agent message"),
-            ("followupTask", "Assign agent task"),
-            ("interruptAgent", "Interrupt agent"),
-            ("listAgents", "List agents"),
+            ("spawnAgent", "Review the parser"),
+            ("sendInput", "Message a sub-agent"),
+            ("resumeAgent", "Resume a sub-agent"),
+            ("wait", "Wait for sub-agents"),
+            ("closeAgent", "Close a sub-agent"),
+            ("sendMessage", "Message a sub-agent"),
+            ("followupTask", "Message a sub-agent"),
+            ("interruptAgent", "Interrupt a sub-agent"),
+            ("listAgents", "List sub-agents"),
         ] {
             let outs = notify(
                 &mut bridge,
@@ -40,7 +40,10 @@ fn both_collaboration_call_spellings_describe_the_action_with_separate_prompt_de
             "type": "subAgentActivity", "id": "child", "prompt": "Reviewing tests",
         }}),
     );
-    assert_eq!(update(&old_activity[0])["title"], "Reviewing tests");
+    assert!(
+        old_activity.is_empty(),
+        "activity reports are not duplicate calls"
+    );
 }
 
 #[test]
@@ -63,14 +66,14 @@ fn collaboration_completion_describes_the_wrapper_without_inventing_child_comple
         assert_eq!(outs.len(), 1);
         let call = update(&outs[0]);
         assert_eq!(call["toolCallId"], "collab");
-        assert_eq!(call["title"], "Start agent");
+        assert_eq!(call["title"], "Start a sub-agent");
         assert_eq!(call["status"], expected);
         assert_eq!(call["content"], json!([]));
     }
 }
 
 #[test]
-fn collaboration_prompt_details_are_bounded_without_becoming_the_title() {
+fn collaboration_prompt_details_and_title_are_bounded_independently() {
     let mut bridge = opened();
     let outs = notify(
         &mut bridge,
@@ -81,7 +84,9 @@ fn collaboration_prompt_details_are_bounded_without_becoming_the_title() {
         }}),
     );
     let call = update(&outs[0]);
-    assert_eq!(call["title"], "Start agent");
+    let title = call["title"].as_str().unwrap();
+    assert!(title.len() <= 256);
+    assert!(title.ends_with('…'));
     let text = call["content"][0]["content"]["text"].as_str().unwrap();
     assert!(text.len() <= crate::project::MAX_ENTRY_TEXT);
     assert!(text.ends_with("… (truncated)"));

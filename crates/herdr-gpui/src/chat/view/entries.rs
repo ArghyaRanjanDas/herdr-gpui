@@ -17,10 +17,15 @@ use super::{
 };
 use crate::{HerdrWindow, config::corners, fonts::StyledFont, notifications::safe_text};
 use gpui::{prelude::*, *};
-use herdr_chat_protocol::{Entry, EntryKind, NoticeLevel, Tool, ToolKind, ToolStatus};
+use herdr_chat_protocol::{
+    ActivityState, Entry, EntryKind, NoticeLevel, Tool, ToolKind, ToolStatus,
+};
 
 mod questions;
+mod steps;
 mod tools;
+
+use steps::steps_label;
 
 fn tool_kind(kind: ToolKind) -> &'static str {
     match kind {
@@ -31,9 +36,22 @@ fn tool_kind(kind: ToolKind) -> &'static str {
         ToolKind::Search => "Search",
         ToolKind::Execute => "Run",
         ToolKind::Think => "Think",
+        ToolKind::Subagent => "Sub-agent",
         ToolKind::Fetch => "Fetch",
         ToolKind::SwitchMode => "Mode",
         ToolKind::Other => "Tool",
+    }
+}
+
+/// The word a tool call's card shows for where it stands: what it started
+/// when it started something, which can outlive the call, else the call.
+fn tool_state(activity: Option<ActivityState>, status: ToolStatus) -> &'static str {
+    match (activity, status) {
+        (Some(ActivityState::Running), _) | (None, ToolStatus::InProgress) => "running",
+        (Some(ActivityState::Finished), _) | (None, ToolStatus::Completed) => "done",
+        (Some(ActivityState::Failed), _) | (None, ToolStatus::Failed) => "failed",
+        (Some(ActivityState::Killed), _) => "stopped",
+        (None, ToolStatus::Pending) => "pending",
     }
 }
 
@@ -76,11 +94,24 @@ impl HerdrWindow {
         let Some(entry) = entries.get(index) else {
             return div().into_any_element();
         };
+        // A sub-agent's own steps are listed in its call's card.
+        if let EntryKind::Tool(tool) = &entry.kind
+            && tool.parent.is_some()
+        {
+            return div().into_any_element();
+        }
         chat.prepared
             .request_visible(entry.id, chat.expanded.contains(&entry.id));
         let body = chat.prepared.body(entry.id);
         let content = match &entry.kind {
             EntryKind::User { text, .. } | EntryKind::Agent { text } => {
+                // A layout may set the user's prompts in a quieter voice.
+                let size = match &entry.kind {
+                    EntryKind::User { .. } => {
+                        layout_for(self.config.chat.layout).prompt_text(&self.chat_look())
+                    }
+                    _ => self.chat_text_size(),
+                };
                 let message = match body.as_deref() {
                     Some(Body::Message(parts)) => self.render_chat_message(
                         pane_id,
@@ -88,6 +119,7 @@ impl HerdrWindow {
                         parts,
                         &chat.prepared.visuals,
                         matches!(entry.kind, EntryKind::User { .. }),
+                        size,
                         cx,
                     ),
                     Some(Body::Summary(summary)) => {
@@ -148,7 +180,7 @@ impl HerdrWindow {
             ),
             EntryKind::Image { author, .. } => match body.as_deref() {
                 Some(Body::Image(id)) => {
-                    self.render_chat_image(*author, *id, &chat.prepared.visuals)
+                    self.render_chat_image(pane_id, *author, *id, &chat.prepared.visuals, cx)
                 }
                 _ => div(),
             },
@@ -177,6 +209,11 @@ impl HerdrWindow {
                 .and_then(|entry| side(&entry.kind))
         };
         let transcript = chat.session.transcript();
+        // The current turn starts at the user's latest prompt.
+        let current = entries
+            .iter()
+            .rposition(|entry| matches!(entry.kind, EntryKind::User { .. }))
+            .is_none_or(|start| index >= start);
         let row = Row {
             entry,
             previous: near(index.checked_sub(1)),
@@ -184,6 +221,7 @@ impl HerdrWindow {
             agent: chat.session.agent(),
             live: index + 1 == entries.len()
                 && transcript.status == herdr_chat_protocol::Status::Working,
+            current,
             content,
         };
         layout_for(self.config.chat.layout).row(row, &self.chat_look())

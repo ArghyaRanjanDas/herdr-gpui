@@ -104,8 +104,16 @@ impl Bridge {
             // Excess concurrent commands still get ordinary start/final updates.
             self.commands.active.insert(id, Output::new(item));
         }
+        let tag = self.background.started(item);
         items::started(item)
-            .map(|call| out::update(self.session(), wire::SessionUpdate::ToolCall(call)))
+            .map(|call| {
+                let call = if tag == Tag::default() {
+                    call
+                } else {
+                    call.meta(tag.meta())
+                };
+                out::update(self.session(), wire::SessionUpdate::ToolCall(call))
+            })
             .into_iter()
             .collect()
     }

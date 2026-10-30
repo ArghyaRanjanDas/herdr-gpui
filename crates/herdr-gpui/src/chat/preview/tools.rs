@@ -85,6 +85,7 @@ fn tool(
             content,
             kind,
             locations: Vec::new(),
+            parent: None,
             status,
             title: title.into(),
         }),

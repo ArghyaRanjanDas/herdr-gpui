@@ -9,6 +9,7 @@ fn tool_preview_copy_includes_only_visible_source_and_preserves_tabs() {
     let (transcript, mut prepared, keys) = prepare(vec![Entry {
         id: EntryId(7),
         kind: EntryKind::Tool(Tool {
+            parent: None,
             call_id: "synthetic-call".into(),
             content: vec![ToolContent::Text { text: raw }],
             kind: ToolKind::Execute,
@@ -75,6 +76,7 @@ fn diff_selection_matches_both_visible_sides_and_keeps_the_patch_markers() {
     let (transcript, mut prepared, keys) = prepare(vec![Entry {
         id: EntryId(8),
         kind: EntryKind::Tool(Tool {
+            parent: None,
             call_id: "synthetic-edit".into(),
             content: vec![ToolContent::Diff {
                 path: "example.rs".into(),

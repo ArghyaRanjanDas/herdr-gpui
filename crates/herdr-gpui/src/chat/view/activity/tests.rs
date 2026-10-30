@@ -71,6 +71,7 @@ fn observed_turn_start_does_not_promote_old_thoughts_or_tools_to_current_activit
     transcript.entries.push(Entry {
         id: EntryId(2),
         kind: EntryKind::Tool(Tool {
+            parent: None,
             call_id: "old-call".into(),
             kind: ToolKind::Execute,
             status: ToolStatus::InProgress,
@@ -112,6 +113,7 @@ fn current_tool_details_are_bounded_and_do_not_cross_turn_boundaries() {
     transcript.entries.push(Entry {
         id: EntryId(2),
         kind: EntryKind::Tool(Tool {
+            parent: None,
             call_id: "id".into(),
             kind: ToolKind::Execute,
             status: ToolStatus::InProgress,

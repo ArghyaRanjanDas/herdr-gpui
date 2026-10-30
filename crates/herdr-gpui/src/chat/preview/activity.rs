@@ -25,6 +25,7 @@ pub(super) fn install(case: &str, transcript: &mut Transcript) -> AgentStatus {
         Entry { id: EntryId(2), kind: EntryKind::User { text: "Check the training runs and explain the changes clearly.".into(), files: 0 } },
         Entry { id: EntryId(3), kind: EntryKind::Agent { text: "I’ll inspect the run status and check the updated code.\n\nThe activity strip below keeps the **reported work**, elapsed time, and clearly labeled token information visible.".into() } },
         Entry { id: EntryId(4), kind: EntryKind::Tool(Tool {
+            parent: None,
             call_id: "synthetic-check".into(), kind: ToolKind::Execute, status: ToolStatus::InProgress,
             title: "Run training status checks".into(), locations: Vec::new(),
             content: vec![ToolContent::Text { text: "{\"command\":\"python scripts/check_runs.py --summary\\npython -m pytest tests/test_metrics.py\"}".into() }],

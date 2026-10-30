@@ -6,6 +6,7 @@ use super::{
     HerdrWindow, PressedLink,
     tab_strip::{Reach, native_page},
 };
+use crate::direction::Logical;
 use crate::{
     CheckForUpdates, Minimize, PlaySound, RunCommand, ShowHerdrNotDetected, ShowUpdatePreview,
     ZoomWindow,
@@ -330,33 +331,7 @@ impl Render for HerdrWindow {
                 terminal.bg(fill.base(self.terminal_theme().background))
             })
             .children(self.terminal_ground(fill.base(self.terminal_theme().background)))
-            .track_focus(&self.focus)
-            // Screen readers and selection tools read the rows on screen and
-            // the selection among them. The rows are built while GPUI
-            // prepaints, and only while an assistive client is listening.
-            .role(Role::Terminal)
-            .aria_label("Terminal")
-            .when(
-                window.is_a11y_active() && self.live.surface_ready(),
-                |terminal| {
-                    let surface = self.live.surface.clone();
-                    let selection = self.selection.clone();
-                    let cell_width = self.cell_width;
-                    let cell_height = self.config.terminal.line_height();
-                    let origin = (
-                        f32::from(self.bounds.origin.x),
-                        f32::from(self.bounds.origin.y),
-                    );
-                    let scale = window.scale_factor();
-                    terminal.a11y_synthetic_children(move |builder| {
-                        if let Some(transcript) = surface.as_deref().and_then(|surface| {
-                            Transcript::read(surface, selection.as_ref(), cell_width, cell_height)
-                        }) {
-                            transcript.expose(builder, origin, scale);
-                        }
-                    })
-                },
-            )
+            .map(|terminal| self.accessible_terminal(terminal, window, cx))
             .capture_key_down(cx.listener(Self::chat_zoom_key))
             .on_key_down(cx.listener(Self::key_down))
             .on_key_up(cx.listener(Self::key_up))
@@ -930,6 +905,9 @@ impl Render for HerdrWindow {
             .text_color(rgb(self.theme.foreground))
             .text_font(&self.config.ui)
             .text_size(px(self.config.ui.size))
+            // Text sets from the side it starts, the right in Hebrew; the
+            // terminal paints its own cells and never follows.
+            .text_start()
             .when(crate::menus::IN_WINDOW && !zen, |root| {
                 root.child(self.render_application_bar(window, cx))
             })
@@ -942,7 +920,9 @@ impl Render for HerdrWindow {
             .child(
                 div()
                     .debug_selector(|| "window-body".into())
-                    .flex()
+                    // The sidebar leads, on the right in a right-to-left
+                    // language; the terminal area beside it never mirrors.
+                    .row()
                     .flex_1()
                     .min_h_0()
                     .relative()

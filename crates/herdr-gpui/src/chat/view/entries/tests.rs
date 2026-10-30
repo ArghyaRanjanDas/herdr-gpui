@@ -1,5 +1,8 @@
+use super::*;
 use crate::chat::prepared::{tool::label, tool_text};
 use herdr_chat_protocol::ToolContent;
+
+mod states;
 
 #[core::prelude::v1::test]
 fn question_tool_labels_do_not_change_unknown_tools() {

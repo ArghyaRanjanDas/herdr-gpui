@@ -13,6 +13,7 @@ fn command(output: &str, status: ToolStatus) -> Entry {
     Entry {
         id: EntryId(1),
         kind: EntryKind::Tool(Tool {
+            parent: None,
             call_id: "command-1".into(),
             content: vec![ToolContent::Text {
                 text: output.into(),

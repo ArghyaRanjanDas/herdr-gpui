@@ -20,8 +20,11 @@ render_existing = true
 
 `render_existing` opts into discovery of running Codex and Claude sessions.
 It is disabled by default. The chat header cycles
-through **Timeline**, **Bubbles**, **Terminal**, **Document**, **Cards**, and
-**iMessage**.
+through **Timeline**, **Bubbles**, **Terminal**, **Document**, **Cards**,
+**iMessage**, and **iA**. **iA** sets the chat like iA Writer: one column at
+about 70 characters a line, your prompts and the agent's steps as quiet notes
+hung from a gutter mark, the agent's prose in full ink, and earlier turns muted
+until you point at them.
 Select a layout directly with:
 
 ```sh
@@ -32,7 +35,10 @@ In **Settings > General**, turn on **Full-width chat** to use the available
 conversation area, or set **Chat width** with the slider or numeric field.
 The default is 800 logical pixels; custom widths range from 320 to 4,000 and
 shrink to fit narrower windows. The transcript and native composer use the
-same width. The equivalent commands are:
+same width. At the default, the agent's prose keeps to about 70 characters a
+line, the length that reads most easily, while code, tables, and pictures use
+the whole column; a width you choose is followed as set. The equivalent
+commands are:
 
 ```sh
 herdr-gpui config set chat.max_width 0     # full width
@@ -51,6 +57,22 @@ usable below it. **Use terminal** reveals the full original interface. Questions
 and approvals keep that interface visible; failed or unmatched discovery falls
 back to it. Local and remote discovery retain their before/after identity checks,
 grouping the reads into two command streams instead of four.
+
+## Sub-agents and background shells
+
+When the agent hands a task to a sub-agent or leaves a command running in the
+background, the summary above the composer says so below the activity strip,
+such as `2 sub-agents · 1 background shell`. A background shell
+outlives the turn that started it, so once the agent is idle the row keeps
+saying what still runs (`1 background shell still running`) and clears when
+everything has ended. Click it for a table of each one: what it is, how long it
+has run or ran, and whether it is running, done, failed, or stopped.
+
+A sub-agent's call is marked **Sub-agent** in the conversation, with the number
+of steps it took; open it to list them. Its steps stay in its card rather than
+in the conversation. A call that started a background shell says `running`
+until the shell ends, even though the call itself is done. Which agents report
+this, and how, is in the [`herdr-acp` README](../crates/herdr-acp/README.md#behaviour).
 
 ## Messages and controls
 

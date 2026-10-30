@@ -78,10 +78,17 @@ pub(crate) fn answer(state: &State, stop: &watch::Sender<bool>, request: Request
     let now = now_ms();
     let result = match request {
         Request::Status => return Response::Status(status(state)),
-        Request::Pair => state
-            .auth()
-            .mint(now, &state.origins(), &state.fingerprint)
-            .map(Response::Offer),
+        Request::Pair => {
+            let mut origins = state.origins();
+            let details = super::addresses::current(&mut origins);
+            state
+                .auth()
+                .mint(now, &origins, &state.fingerprint)
+                .map(|mut offer| {
+                    offer.address_details = details;
+                    Response::Offer(offer)
+                })
+        }
         Request::Pairing { id } => state.auth().pairing(&id, now).map(Response::Pairing),
         Request::Approve { id, allow, code } => state
             .auth()
@@ -120,6 +127,25 @@ pub(crate) fn answer(state: &State, stop: &watch::Sender<bool>, request: Request
             stop.send_replace(true);
             return Response::Done;
         }
+        Request::PullRequests { snapshot } => {
+            if !snapshot.valid() {
+                return Response::Error {
+                    code: ErrorCode::Unsupported,
+                    message: "Invalid pull request presentation data".into(),
+                };
+            }
+            let layout = state.hub.layout();
+            if snapshot.boot_id != layout.boot {
+                return Response::Error {
+                    code: ErrorCode::Other,
+                    message: "The daemon layout changed".into(),
+                };
+            }
+            if state.pull_requests.borrow().as_ref() != &snapshot {
+                state.pull_requests.send_replace(Arc::new(snapshot));
+            }
+            return Response::Done;
+        }
     };
     result.unwrap_or_else(|error| Response::Error {
         code: ErrorCode::from(&error),
@@ -129,10 +155,14 @@ pub(crate) fn answer(state: &State, stop: &watch::Sender<bool>, request: Request
 
 fn status(state: &State) -> Status {
     let layout = state.hub.layout();
+    let mut addresses = state.origins();
+    let address_details = super::addresses::current(&mut addresses);
     Status {
+        boot_id: layout.boot.clone(),
+        address_details,
         version: version().to_owned(),
         port: state.port,
-        addresses: state.origins(),
+        addresses,
         fingerprint: state.fingerprint.clone(),
         herdr: layout.connected,
         chats: layout.chats().count(),

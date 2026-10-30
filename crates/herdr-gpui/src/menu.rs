@@ -15,6 +15,7 @@ pub(crate) mod devices;
 mod fan_out;
 mod git;
 mod github;
+pub(crate) mod gitlab;
 mod open_checkout;
 mod open_link;
 mod page;
@@ -64,6 +65,7 @@ pub(crate) use {
     worktree_source::WorktreeSource,
 };
 
+use crate::direction::Logical;
 pub(crate) use devices::{DeviceScope, SettingsHint, enter as enter_key};
 use page::WorkspaceMenuAction;
 use state::Submission;
@@ -93,7 +95,7 @@ fn action_icon(
         .group("menu-action-icon")
         .size(px(24.))
         .flex_none()
-        .flex()
+        .row()
         .items_center()
         .justify_center()
         .rounded(px(crate::config::corners::CONTROL))

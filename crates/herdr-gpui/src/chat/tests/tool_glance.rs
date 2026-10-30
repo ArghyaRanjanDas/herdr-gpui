@@ -36,6 +36,7 @@ fn folded_tools_keep_diff_counts_and_disclose_output_on_click(cx: &mut TestAppCo
                     ],
                     kind: ToolKind::Edit,
                     locations: vec!["/work/src/lib.rs".into()],
+                    parent: None,
                     status: ToolStatus::Completed,
                     title: "Edit".into(),
                 }),

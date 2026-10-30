@@ -147,6 +147,32 @@ impl ChatLayout for IMessage {
         Some(look.theme.background)
     }
 
+    /// Muted under the last bubble, where Messages shows that the other
+    /// side is typing; its row stays, empty, between turns.
+    fn working(
+        &self,
+        working: Option<&super::super::working::Working>,
+        look: &Look<'_>,
+    ) -> Option<Div> {
+        Some(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .when(working.is_some(), |row| {
+                    row.debug_selector(|| "chat-typing".into())
+                        .child(super::super::working::pulse(look))
+                })
+                .when(working.is_none(), |row| row.invisible())
+                .px(px(16. + 12. * look.text / TEXT))
+                .pb(px(4.))
+                .text_size(px((look.text - 2.).max(10.)))
+                .italic()
+                .text_color(rgb(look.theme.muted))
+                .child("typing\u{2026}"),
+        )
+    }
+
     fn turn(&self, text: AnyElement, look: &Look<'_>) -> Div {
         div()
             .debug_selector(|| "chat-turn".into())

@@ -133,13 +133,20 @@ pub(super) fn go_to_entries(
                     .iter()
                     .find(|agent| agent.pane_id == pane.pane_id);
                 let name = match agent {
-                    Some(agent) => crate::sidebar::agent_name(agent),
+                    Some(agent) => {
+                        let name = crate::sidebar::agent_name(agent);
+                        match crate::sidebar::pane_name(agent, snapshot, name) {
+                            Some(pane) => format!("{name} · {pane}"),
+                            None => name.to_owned(),
+                        }
+                    }
                     None => pane
                         .label
                         .as_deref()
                         .map(str::trim)
                         .filter(|label| !label.is_empty())
-                        .unwrap_or("Terminal"),
+                        .unwrap_or("Terminal")
+                        .to_owned(),
                 };
                 let path = pane.foreground_cwd.as_deref().or(pane.cwd.as_deref());
                 let detail = [host, Some(workspace.label.as_str()), tab, path]
@@ -149,13 +156,17 @@ pub(super) fn go_to_entries(
                     .collect::<Vec<_>>()
                     .join("  ");
                 // An agent is also found by its kind, name, and plain status word,
-                // whatever its row is titled or its integration labels the state.
+                // whatever its row is titled or its integration labels the state,
+                // and by the titles and Rename label its sidebar row can show.
                 let keywords = agent.map_or(String::new(), |agent| {
                     [
                         agent.agent.as_deref(),
                         agent.name.as_deref(),
                         Some(status_badge(agent.agent_status)),
                         Some("agent"),
+                        agent.title.as_deref(),
+                        agent.terminal_title_stripped.as_deref(),
+                        pane.label.as_deref(),
                     ]
                     .into_iter()
                     .flatten()
@@ -163,7 +174,7 @@ pub(super) fn go_to_entries(
                     .join(" ")
                 });
                 let mut entry = Entry::with_keywords(
-                    name.to_owned(),
+                    name,
                     detail,
                     agent.map_or(SharedString::new_static("Terminal"), |agent| {
                         crate::sidebar::state_label(agent, status_badge(agent.agent_status))

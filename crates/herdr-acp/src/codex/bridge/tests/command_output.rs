@@ -401,10 +401,14 @@ fn malformed_command_and_turn_completion_cannot_discard_pending_output() {
             "threadId": THREAD, "turn": {"id": "turn-1", "status": "interrupted"},
         }),
     );
-    assert_eq!(ended.len(), 2);
+    assert_eq!(ended.len(), 3);
     assert_eq!(content(&ended[0]), ["first pending"]);
     assert_eq!(
-        response(&ended[1], 2).as_ref().unwrap()["stopReason"],
+        update(&ended[1])["_meta"]["herdr"]["activity"]["kind"],
+        "shell"
+    );
+    assert_eq!(
+        response(&ended[2], 2).as_ref().unwrap()["stopReason"],
         "cancelled"
     );
     assert!(bridge.next_tick().is_none());

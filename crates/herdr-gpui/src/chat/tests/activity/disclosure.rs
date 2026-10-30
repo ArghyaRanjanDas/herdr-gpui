@@ -14,6 +14,7 @@ fn arrow_and_selectable_header_toggle_short_tool_details_once(cx: &mut TestAppCo
             vec![Entry {
                 id: EntryId(1),
                 kind: EntryKind::Tool(Tool {
+                    parent: None,
                     call_id: "synthetic-short-script".into(),
                     content: vec![
                         ToolContent::Text {

@@ -223,6 +223,7 @@ fn collapsed_tools_request_no_code_jobs_and_table_math_keeps_display_style(
     transcript.entries.push(Entry {
         id: EntryId(1),
         kind: EntryKind::Tool(herdr_chat_protocol::Tool {
+            parent: None,
             call_id: "many".into(),
             title: "Edit".into(),
             kind: herdr_chat_protocol::ToolKind::Edit,

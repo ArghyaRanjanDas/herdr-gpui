@@ -27,7 +27,15 @@ fn imessage_prose_inherits_its_bubble_while_rich_surfaces_keep_theme_ink(cx: &mu
                 &selected,
                 &geometry,
             );
-            let mut prose = view.render_chat_rich("fixture", &[], &visuals, &selection, true, cx);
+            let mut prose = view.render_chat_rich(
+                "fixture",
+                &[],
+                &visuals,
+                &selection,
+                true,
+                view.chat_text_size(),
+                cx,
+            );
             assert_eq!(prose.text_style().color, None, "{name}: inherit bubble ink");
             for style in [
                 Style::default(),
@@ -61,6 +69,7 @@ fn imessage_prose_inherits_its_bubble_while_rich_surfaces_keep_theme_ink(cx: &mu
                     visuals: &visuals,
                     links,
                     selection: &selection,
+                    size: view.chat_text_size(),
                     cx,
                 };
                 (
@@ -108,7 +117,8 @@ fn imessage_prose_inherits_its_bubble_while_rich_surfaces_keep_theme_ink(cx: &mu
                     }
                 }
                 for inline in [false, true] {
-                    let mut panel = view.rich_math(math, "x", &visuals, inline);
+                    let mut panel =
+                        view.rich_math(math, "x", &visuals, inline, view.chat_text_size());
                     assert_eq!(
                         panel.style().background,
                         Some(rgb(view.theme.background).into())
@@ -123,13 +133,21 @@ fn imessage_prose_inherits_its_bubble_while_rich_surfaces_keep_theme_ink(cx: &mu
             );
 
             view.config.chat.layout = ChatLayoutMode::Document;
-            let mut prose = view.render_chat_rich("fixture", &[], &visuals, &selection, false, cx);
+            let mut prose = view.render_chat_rich(
+                "fixture",
+                &[],
+                &visuals,
+                &selection,
+                false,
+                view.chat_text_size(),
+                cx,
+            );
             assert_eq!(
                 prose.text_style().color,
                 ink,
                 "other layouts retain theme ink"
             );
-            let mut math = view.rich_math(math, "x", &visuals, true);
+            let mut math = view.rich_math(math, "x", &visuals, true, view.chat_text_size());
             assert!(
                 math.style().background.is_none(),
                 "other layouts need no panel"

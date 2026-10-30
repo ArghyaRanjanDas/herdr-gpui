@@ -26,6 +26,7 @@ mod embeds;
 mod feature;
 mod file_links;
 mod glide;
+mod ia;
 mod imessage;
 mod layouts;
 mod link;
@@ -37,23 +38,29 @@ mod notices;
 mod observed_status;
 mod observer_program;
 mod overlay;
+mod pasted;
 mod prepared;
 mod program_cleanup;
 mod questions;
 mod recall;
+mod running;
 mod selection;
 mod session;
 mod start;
+mod stop;
 mod streaming;
+mod subagents;
 mod terminal_input;
 mod timeline;
 mod tool_glance;
 mod typography;
 mod user_messages;
+mod viewer;
 mod visual;
 mod widget_toggle;
 mod widgets;
 mod width;
+mod working;
 mod zoom;
 
 /// How long a test waits on a worker or a socket before failing.
@@ -176,9 +183,12 @@ impl Program {
             return;
         };
         self.stopping.store(true, Ordering::Release);
-        // Wakes the blocked `accept`.
-        let _ = Connection::connect(&self.path, WAIT);
+        // Keep the wakeup alive until `accept` returns: Windows discards
+        // pipe clients that disconnect before the listener accepts them.
+        let wakeup = Connection::connect(&self.path, WAIT);
+        wait_until(|| listening.is_finished());
         listening.join().unwrap();
+        drop(wakeup);
     }
 
     /// Accepts the next client and reads its greeting.
@@ -239,6 +249,7 @@ fn send(stream: &mut Peer, message: &ServerMessage) {
 fn hello(since: Option<Cursor>) -> ClientMessage {
     ClientMessage::Hello {
         client: herdr_chat_protocol::ClientKind::Gui,
+        revision: herdr_chat_protocol::REVISION,
         since,
         version: VERSION,
     }

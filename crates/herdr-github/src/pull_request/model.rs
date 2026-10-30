@@ -4,7 +4,7 @@
 
 #[cfg(any(test, feature = "test-support"))]
 use super::parse::parse;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 /// Where a workspace's checkout lives, which decides how its GitHub
@@ -319,21 +319,25 @@ impl From<Option<String>> for Outcome {
 }
 
 /// What a pull request's badge says about it, before a theme colors it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Tone {
-    /// Merged.
-    Merged,
+    // keep-sorted start
     /// Closed, or something needs fixing: conflicts, failed checks, or
     /// requested changes.
     Attention,
-    /// Draft, or its state is unknown.
-    Muted,
-    /// Checks are running, a review is required, or GitHub has not decided.
-    Waiting,
     /// Blocked or behind its base.
     Held,
+    /// Merged.
+    Merged,
     /// Ready to merge.
     Ready,
+    /// Checks are running, a review is required, or GitHub has not decided.
+    Waiting,
+    // keep-sorted end
+    /// Draft, unknown, or a future tone a client does not yet know.
+    #[serde(other)]
+    Muted,
 }
 
 impl PullRequest {
@@ -433,11 +437,24 @@ pub fn repository_input(
     worktree: Option<&herdr_client::protocol::ClientShellWorktree>,
     branch: Option<&str>,
 ) -> crate::Result<Input> {
+    repository_input_on(worktree, branch, &Origin::Local)
+}
+
+fn repository_input_on(
+    worktree: Option<&herdr_client::protocol::ClientShellWorktree>,
+    branch: Option<&str>,
+    origin: &Origin,
+) -> crate::Result<Input> {
     let key = worktree
         .map(|tree| tree.key.as_str())
         .ok_or(super::Error::Metadata)?;
     let branch = valid_branch(branch)?;
-    if !Path::new(key).is_absolute() {
+    let absolute = match origin {
+        Origin::Local => Path::new(key).is_absolute(),
+        // SSH Git commands run in a POSIX shell, including on Windows clients.
+        Origin::Ssh(_) => key.starts_with('/') && !key.chars().any(char::is_control),
+    };
+    if !absolute {
         return Err(super::Error::AbsolutePath.into());
     }
     Ok(Input {
@@ -465,7 +482,7 @@ pub fn workspace_input(
     });
     let branch = workspace.branch.as_deref();
     if worktree.is_some() || *origin != Origin::Local || workspace.new_workspace_cwd.is_empty() {
-        return repository_input(worktree, branch);
+        return repository_input_on(worktree, branch, origin);
     }
     let branch = valid_branch(branch)?;
     if !Path::new(&workspace.new_workspace_cwd).is_absolute() {

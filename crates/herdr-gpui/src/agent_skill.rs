@@ -3,8 +3,9 @@
 //! it where Claude Code and other agents look for skills, and, once the user
 //! agrees, keeps it current on every start: the skill names this app's
 //! executable, which moves when the app does. Only files the app wrote,
-//! recognized by their marker, are ever rewritten or removed.
-use crate::state_file;
+//! recognized by their marker, are ever rewritten or removed. `[agent_skill]
+//! install` in the settings limits all of this, whatever the saved answer.
+use crate::{config::SkillInstall, state_file};
 use gpui::{App, Global};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -82,7 +83,19 @@ pub(crate) fn automations_text(executable: Option<&Path>) -> String {
     if executable.and_then(Path::to_str).is_some() {
         text = text.replace("herdr-gpui ", &format!("{} ", command(executable)));
     }
-    text
+    escape_description(text)
+}
+
+/// The frontmatter's description is a double-quoted YAML scalar, where a
+/// Windows path's backslashes would read as escapes such as `\U`.
+fn escape_description(text: String) -> String {
+    let Some(line) = text
+        .lines()
+        .find(|line| line.starts_with("description: ") && line.contains('\\'))
+    else {
+        return text;
+    };
+    text.replacen(line, &line.replace('\\', r"\\"), 1)
 }
 
 fn managed(contents: &str) -> bool {
@@ -193,7 +206,12 @@ pub(crate) struct AgentSkill {
     choice: Option<Choice>,
     /// Asked at most once per run, by the first window ready to.
     ask: bool,
+    /// What the settings allow; unknown until they load, so nothing is
+    /// offered, refreshed, or sent to a host against a setting not yet read.
+    install: Option<SkillInstall>,
     path: Option<PathBuf>,
+    /// Rewrite the installed skill once the settings allow it.
+    refresh: bool,
 }
 
 impl Global for AgentSkill {}
@@ -221,7 +239,14 @@ impl AgentSkill {
         let home = crate::config::home().ok();
         let ask =
             crate::RELEASE_BUILD && choice.is_none() && home.as_deref().is_some_and(agents_present);
-        Self { choice, ask, path }
+        let refresh = crate::RELEASE_BUILD && choice == Some(Choice::Installed);
+        Self {
+            choice,
+            ask,
+            install: None,
+            path,
+            refresh,
+        }
     }
 
     /// An app that has not been asked yet, saving nowhere.
@@ -230,15 +255,24 @@ impl AgentSkill {
         Self {
             choice: None,
             ask: true,
+            install: Some(SkillInstall::Ask),
             path: None,
+            refresh: false,
         }
     }
 
     pub(crate) fn install_global(self, cx: &mut App) {
-        let refresh = crate::RELEASE_BUILD && self.choice == Some(Choice::Installed);
+        // Fixtures never read the user's settings, so they never ask either.
+        let follow = self.path.is_some();
         cx.set_global(self);
-        if refresh {
-            refresh_installed(cx);
+        if follow {
+            crate::config::watch::follow(
+                cx,
+                "agent skill",
+                |config| config.agent_skill.install,
+                Self::allow,
+            )
+            .detach();
         }
         // The notes prompt names the executable, which `executable` finds on
         // disk; resolve it now, off the UI thread, rather than on first use.
@@ -250,14 +284,36 @@ impl AgentSkill {
             .detach();
     }
 
+    /// Applies the settings' `[agent_skill] install`, as loaded or edited.
+    fn allow(cx: &mut App, install: SkillInstall) {
+        let skill = cx.global_mut::<Self>();
+        skill.install = Some(install);
+        if install != SkillInstall::Off && std::mem::take(&mut skill.refresh) {
+            refresh_installed(cx);
+        }
+    }
+
     pub(crate) fn choice(cx: &App) -> Option<Choice> {
         cx.try_global::<Self>().and_then(|skill| skill.choice)
+    }
+
+    /// The choice to apply on saved SSH hosts, when the settings let the app
+    /// touch them.
+    pub(crate) fn remote_choice(cx: &App) -> Option<Choice> {
+        cx.try_global::<Self>()
+            .filter(|skill| skill.install == Some(SkillInstall::Ask))
+            .and_then(|skill| skill.choice)
     }
 
     /// Whether this window should ask now; claims the question so no other
     /// window asks too.
     pub(crate) fn take_ask(cx: &mut App) -> bool {
-        let ask = cx.try_global::<Self>().is_some_and(|skill| skill.ask);
+        let ask = cx.try_global::<Self>().is_some_and(|skill| {
+            skill.ask
+                && skill
+                    .install
+                    .is_some_and(|install| install != SkillInstall::Off)
+        });
         if ask {
             cx.global_mut::<Self>().ask = false;
         }
@@ -272,6 +328,9 @@ impl AgentSkill {
         let skill = cx.global_mut::<Self>();
         skill.choice = Some(choice);
         skill.ask = false;
+        // An answer now outdates the start's refresh: installing writes the
+        // skill itself, and a removed one must not come back.
+        skill.refresh = false;
         let Some(path) = skill.path.clone() else {
             return;
         };
@@ -363,6 +422,31 @@ mod tests {
             shell_word(app.to_str().unwrap())
         )));
         assert!(!text.contains("herdr-gpui automation"));
+    }
+
+    /// A Windows install path lands in the description, and YAML reads a
+    /// backslash in a double-quoted scalar as an escape (#868).
+    #[test]
+    fn a_backslashed_install_path_stays_valid_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+        // One directory named with a backslash on Unix, two on Windows.
+        let install = dir.path().join(r"Programs\Herdr UI");
+        std::fs::create_dir_all(&install).unwrap();
+        let app = install.join("Herdr");
+        std::fs::write(&app, "").unwrap();
+        let automate = install.join(if cfg!(windows) {
+            "herdr-automate.exe"
+        } else {
+            "herdr-automate"
+        });
+        std::fs::write(&automate, "").unwrap();
+        let text = automations_text(Some(&app));
+        let raw = description(&text);
+        assert!(!raw.replace(r"\\", "").contains('\\'), "{raw}");
+        let word = shell_word(automate.to_str().unwrap());
+        assert!(raw.replace(r"\\", r"\").contains(&format!("{word} check")));
+        // The body is Markdown, so its commands keep the path as it is.
+        assert!(text.contains(&format!("{word} check FILE")));
     }
 
     #[test]
@@ -471,6 +555,8 @@ mod tests {
         let saved: Saved = serde_json::from_str(r#"{"choice":"installed"}"#).unwrap();
         assert_eq!(saved.choice, Choice::Installed);
     }
+
+    mod install_setting;
 
     #[gpui::test]
     fn the_offer_is_made_once_and_closing_it_means_not_now(cx: &mut gpui::TestAppContext) {

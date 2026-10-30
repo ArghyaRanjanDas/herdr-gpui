@@ -3,6 +3,7 @@
 //! split by responsibility across the submodules below; the fields live here
 //! because every one of them describes this window's own presentation state.
 
+mod accessibility;
 mod annotate;
 mod announcement;
 mod backdrop;
@@ -22,9 +23,9 @@ mod find;
 mod flash;
 pub(crate) use commands::run_window_command;
 pub(crate) use flash::Flash;
-pub(crate) use zen::slide_left;
+pub(crate) use zen::slide_start;
 mod function_keys;
-mod image_source;
+pub(crate) mod image_source;
 mod images;
 mod input;
 mod layout_save;
@@ -654,9 +655,13 @@ impl HerdrWindow {
             self.discard_composition(cx);
         }
         self.poll_github(window, cx);
+        if self.poll_gitlab_avatars() {
+            cx.notify();
+        }
         if self.update_workspace_pr() {
             cx.notify();
         }
+        self.publish_remote_pull_requests(cx);
         self.update_merged_cleanup(window, cx);
         if self.update_git() {
             cx.notify();

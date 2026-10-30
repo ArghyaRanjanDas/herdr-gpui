@@ -5,6 +5,7 @@
 mod keys;
 
 use super::{MENU_MARGIN, Page, WorkspaceAction, devices::rail};
+use crate::direction::Logical;
 use crate::{HerdrWindow, actions, fonts::StyledFont};
 use gpui::{prelude::*, *};
 
@@ -232,18 +233,19 @@ impl HerdrWindow {
         } else {
             180.
         };
-        let left = match page {
-            Page::Devices => self.menu.anchor.x,
-            Page::Sessions => self
-                .menu
-                .anchor
-                .x
-                .min((viewport.width - px(width + MENU_MARGIN)).max(px(0.))),
+        // From the window's start edge, which right to left is its right.
+        let anchor = match crate::direction::is_rtl() {
+            false => self.menu.anchor.x,
+            true => viewport.width - self.menu.anchor.x,
+        };
+        let start = match page {
+            Page::Devices => anchor,
+            Page::Sessions => anchor.min((viewport.width - px(width + MENU_MARGIN)).max(px(0.))),
             _ => px(56.),
         };
         let panel = panel
             .absolute()
-            .left(left)
+            .inset_s(start)
             .w(px(width).min((viewport.width - px(16.)).max(px(0.))));
         if above {
             panel
@@ -388,6 +390,7 @@ impl HerdrWindow {
                 let chrome = px(crate::titlebar::HEIGHT);
                 let width = px(crate::usage::PANEL_WIDTH)
                     .min((viewport.width - px(2. * MENU_MARGIN)).max(px(0.)));
+                // The segment's own x, whichever side the bar starts on.
                 panel
                     .absolute()
                     .left(
@@ -502,6 +505,7 @@ impl HerdrWindow {
                         | Page::CodeSearch
                         | Page::AppUpdate
                         | Page::GitHub
+                        | Page::GitLab
                         | Page::AddDevice
                         | Page::AddWsl
                         | Page::Usage(_)
@@ -552,7 +556,7 @@ impl HerdrWindow {
                         .min(px(crate::remote::MENU_WIDTH)))
                     .shadow_lg()
             })
-            .when(page == Page::GitHub, |panel| {
+            .when(matches!(page, Page::GitHub | Page::GitLab), |panel| {
                 panel
                     .w((viewport.width - px(32.)).max(px(0.)).min(px(400.)))
                     .flex()
@@ -637,7 +641,7 @@ impl HerdrWindow {
                         })
                         .min_h(px(font.line_height() + 12.))
                         .px(px(8.))
-                        .flex()
+                        .row()
                         .items_center()
                         .cursor_pointer()
                         .when(Some(index) == self.menu.selected, |row| {
@@ -674,6 +678,8 @@ impl HerdrWindow {
             panel = panel.child(self.render_remove_wsl(cx));
         } else if page == Page::GitHub {
             panel = panel.child(self.render_github_auth(cx));
+        } else if page == Page::GitLab {
+            panel = panel.child(self.render_gitlab_page(cx));
         } else if page == Page::RemoteDevices {
             panel = panel.child(self.render_remote_menu(cx));
         } else if page == Page::Workspace {
@@ -763,7 +769,7 @@ impl HerdrWindow {
                 ))
                 .child(
                     div()
-                        .flex()
+                        .row()
                         .flex_wrap()
                         .gap(px(8.))
                         .p(px(8.))
@@ -844,10 +850,14 @@ impl HerdrWindow {
             };
             anchored()
                 .position(position)
-                // The "…" button sits at a strip's right end, so its menu
-                // hangs leftward from it, as an editor's does.
-                .when(matches!(page, Page::Group | Page::RemoteDevices), |menu| {
-                    menu.anchor(Anchor::TopRight)
+                // A menu hangs toward the end from the pointer, and toward
+                // the start from a button at the end: the remote indicator,
+                // or the "…" at a strip's right end, which stays there
+                // because strips never mirror.
+                .anchor(match page {
+                    Page::Group => Anchor::TopRight,
+                    Page::RemoteDevices => crate::direction::anchor(Anchor::TopRight),
+                    _ => crate::direction::anchor(Anchor::TopLeft),
                 })
                 .snap_to_window_with_margin(Edges::all(px(12.)))
                 .child(panel)
@@ -869,7 +879,7 @@ impl HerdrWindow {
                 .id("menu-leaving")
                 .absolute()
                 .inset_0()
-                .when(dims, |layer| layer.flex().items_center().justify_center())
+                .when(dims, |layer| layer.row().items_center().justify_center())
                 .child(placed);
         }
         div()
@@ -881,12 +891,12 @@ impl HerdrWindow {
             .aria_label(page.accessible_name())
             .absolute()
             .top_0()
-            .left_0()
+            .inset_s(px(0.))
             .bottom_0()
-            .right_0()
+            .inset_e(px(0.))
             .when(dims, |overlay| {
                 overlay
-                    .flex()
+                    .row()
                     .items_center()
                     .justify_center()
                     .bg(super::appear::backdrop(

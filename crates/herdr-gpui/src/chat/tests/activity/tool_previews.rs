@@ -25,6 +25,7 @@ fn expanded_tool_code_copies_the_full_decoded_and_original_sources(cx: &mut Test
                 vec![Entry {
                     id: EntryId(1),
                     kind: EntryKind::Tool(Tool {
+                        parent: None,
                         call_id: "synthetic-tool-copy".into(),
                         content: vec![ToolContent::Text {
                             text: original.clone(),

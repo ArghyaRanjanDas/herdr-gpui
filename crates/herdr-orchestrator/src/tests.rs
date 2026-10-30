@@ -10,7 +10,15 @@ mod full_listing;
 mod git;
 mod github;
 mod gitlab;
+mod gitlab_envrc;
 mod gitlab_hosts;
+mod gitlab_merge_requests;
+mod gitlab_oauth;
+// The private credential file these save to is Unix-only.
+#[cfg(unix)]
+mod gitlab_renewal;
+mod gitlab_saved_turns;
+mod gitlab_sign_in;
 mod incremental;
 mod keys;
 mod line_endings;

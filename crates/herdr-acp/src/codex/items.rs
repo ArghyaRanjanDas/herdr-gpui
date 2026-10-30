@@ -95,28 +95,11 @@ fn describe(item: &Value) -> Option<(String, wire::ToolKind, Vec<wire::ToolCallC
             Vec::new(),
         ),
         "collabToolCall" | "collabAgentToolCall" => collaboration(item),
-        "subAgentActivity" => (
-            field("prompt").unwrap_or("Subagent").to_owned(),
-            wire::ToolKind::Think,
-            Vec::new(),
-        ),
         _ => return None,
     })
 }
 
 fn collaboration(item: &Value) -> (String, wire::ToolKind, Vec<wire::ToolCallContent>) {
-    let label = match item.get("tool").and_then(Value::as_str) {
-        Some("spawnAgent") => "Start agent",
-        Some("sendInput") => "Send agent input",
-        Some("resumeAgent") => "Resume agent",
-        Some("wait") => "Wait for agents",
-        Some("closeAgent") => "Close agent",
-        Some("sendMessage") => "Send agent message",
-        Some("followupTask") => "Assign agent task",
-        Some("interruptAgent") => "Interrupt agent",
-        Some("listAgents") => "List agents",
-        _ => "Agent activity",
-    };
     let content = item
         .get("prompt")
         .and_then(Value::as_str)
@@ -124,7 +107,36 @@ fn collaboration(item: &Value) -> (String, wire::ToolKind, Vec<wire::ToolCallCon
         .map(|prompt| out::text(&bounded_text(prompt)))
         .into_iter()
         .collect();
-    (label.to_owned(), wire::ToolKind::Think, content)
+    (collab_title(item), wire::ToolKind::Think, content)
+}
+
+/// A collab call's title: a sub-agent's task, or what the call does to one.
+/// (`subAgentActivity` items are not calls: they only report how a
+/// sub-agent stands.)
+fn collab_title(item: &Value) -> String {
+    let field = |key: &str| item.get(key).and_then(Value::as_str);
+    let prompt = field("prompt")
+        .and_then(|prompt| prompt.lines().find(|line| !line.trim().is_empty()))
+        .map(str::trim);
+    let title = match (field("tool"), prompt) {
+        (Some("spawnAgent"), Some(prompt)) => prompt,
+        (Some("spawnAgent"), None) => "Start a sub-agent",
+        (Some("wait"), _) => "Wait for sub-agents",
+        (Some("sendInput" | "sendMessage" | "followupTask"), _) => "Message a sub-agent",
+        (Some("closeAgent"), _) => "Close a sub-agent",
+        (Some("interruptAgent"), _) => "Interrupt a sub-agent",
+        (Some("resumeAgent"), _) => "Resume a sub-agent",
+        (Some("listAgents"), _) => "List sub-agents",
+        (_, Some(prompt)) => prompt,
+        _ => "Sub-agent",
+    };
+    const MAX_TITLE: usize = 256;
+    if title.len() <= MAX_TITLE {
+        title.to_owned()
+    } else {
+        let end = title.floor_char_boundary(MAX_TITLE - '…'.len_utf8());
+        format!("{}…", &title[..end])
+    }
 }
 
 /// What a finished item printed or returned.

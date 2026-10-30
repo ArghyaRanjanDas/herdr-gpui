@@ -24,6 +24,7 @@ fn tools_hide_output_until_expanded_and_collapse_it_again(cx: &mut TestAppContex
                     }],
                     kind: ToolKind::Execute,
                     locations: Vec::new(),
+                    parent: None,
                     status: ToolStatus::Completed,
                     title: "Read complete output".into(),
                 }),

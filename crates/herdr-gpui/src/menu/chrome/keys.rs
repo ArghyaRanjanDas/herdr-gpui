@@ -117,6 +117,10 @@ impl HerdrWindow {
             self.fan_out_key(event, window, cx);
             return;
         }
+        if self.menu.page == Some(Page::RemoteControl) {
+            self.remote_pairing_key(event, window, cx);
+            return;
+        }
         if self.menu.page == Some(Page::DeviceTheme) {
             self.device_theme_key(event, window, cx);
             return;
@@ -218,6 +222,10 @@ impl HerdrWindow {
         }
         if self.menu.page == Some(Page::GitHub) {
             self.github_key(event, window, cx);
+            return;
+        }
+        if self.menu.page == Some(Page::GitLab) {
+            self.gitlab_key(event, window, cx);
             return;
         }
         if self.menu.page == Some(Page::Themes) {

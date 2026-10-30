@@ -4,13 +4,19 @@ use crate::chat::{
     view::{copy, visuals::Frame},
 };
 
-fn tool_state(status: ToolStatus, kind: ToolKind) -> (&'static str, usize) {
-    match status {
-        ToolStatus::Pending => ("waiting", 3),
-        ToolStatus::InProgress if kind == ToolKind::Think => ("thinking", 5),
-        ToolStatus::InProgress => ("running", 4),
-        ToolStatus::Completed => ("done", 2),
-        ToolStatus::Failed => ("failed", 1),
+fn tool_state(
+    activity: Option<ActivityState>,
+    status: ToolStatus,
+    kind: ToolKind,
+) -> (&'static str, usize) {
+    let word = super::tool_state(activity, status);
+    match (activity, status, kind) {
+        (None, ToolStatus::Pending, _) => ("waiting", 3),
+        (None, ToolStatus::InProgress, ToolKind::Think) => ("thinking", 5),
+        (Some(ActivityState::Running), _, _) | (None, ToolStatus::InProgress, _) => (word, 4),
+        (Some(ActivityState::Finished), _, _) | (None, ToolStatus::Completed, _) => (word, 2),
+        (Some(ActivityState::Failed), _, _) | (None, ToolStatus::Failed, _) => (word, 1),
+        (Some(ActivityState::Killed), _, _) => (word, 3),
     }
 }
 
@@ -25,17 +31,22 @@ impl HerdrWindow {
         cx: &mut Context<Self>,
     ) -> Div {
         let theme = &self.theme;
-        let (status, palette) = tool_state(tool.status, tool.kind);
+        let chat = self.chats.pane(pane_id);
+        // A background task can outlive the tool call that started it.
+        let activity = chat.and_then(|chat| chat.session.transcript().activity(&tool.call_id));
+        let (status, palette) = tool_state(
+            activity.map(|activity| activity.state),
+            tool.status,
+            tool.kind,
+        );
+        let steps = chat.map_or(&[][..], |chat| chat.prepared.steps(&tool.call_id));
         let color = super::super::text_ink(theme.palette[palette], theme.background);
         let small = px((self.chat_text_size() - 1.).max(10.));
         let summary = match body {
             Some(Body::Tool(summary)) => Some(summary),
             _ => None,
         };
-        let expanded = self
-            .chats
-            .pane(pane_id)
-            .is_some_and(|chat| chat.expanded.contains(&entry));
+        let expanded = chat.is_some_and(|chat| chat.expanded.contains(&entry));
         let label = summary
             .map(|summary| summary.label.clone())
             .unwrap_or_else(|| crate::chat::prepared::tool::label(&tool.title, None));
@@ -81,7 +92,7 @@ impl HerdrWindow {
                             .min_w_0()
                             .truncate()
                             .text_font(&self.config.terminal)
-                            .text_size(px(self.config.terminal.size - 1.))
+                            .text_size(self.chat_tool_text())
                             .text_color(rgb(theme.subtext()))
                             .child(self.render_chat_text(
                                 pane_id,
@@ -92,6 +103,15 @@ impl HerdrWindow {
                                 cx,
                             )),
                     )
+                    .when(!steps.is_empty(), |header| {
+                        header.child(
+                            div()
+                                .flex_none()
+                                .text_size(small)
+                                .text_color(rgb(theme.subtext()))
+                                .child(steps_label(steps.len())),
+                        )
+                    })
                     .child(
                         div()
                             .flex_none()
@@ -117,6 +137,9 @@ impl HerdrWindow {
                         )
                     }),
             )
+            .when(expanded && !steps.is_empty(), |card| {
+                card.children(chat.map(|chat| self.render_chat_steps(chat, entry, steps)))
+            })
             .children(
                 page_written(tool)
                     .filter(|_| expanded)
@@ -316,16 +339,13 @@ impl HerdrWindow {
                     .flex_wrap()
                     .gap(px(6.))
                     .py(px(2.))
-                    .children(
-                        summary
-                            .images
-                            .iter()
-                            .map(|id| self.render_chat_visual(*id, visuals, Frame::ToolImage)),
-                    )
+                    .children(summary.images.iter().map(|id| {
+                        self.render_chat_visual(pane_id, *id, visuals, Frame::ToolImage, cx)
+                    }))
                     .into_any_element(),
             );
         }
-        if expanded {
+        if expanded || !layout_for(self.config.chat.layout).tool_preview() {
             return glance;
         }
         let more_files = summary.diffs.len().saturating_sub(COMPACT_LOCATIONS);

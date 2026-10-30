@@ -121,12 +121,14 @@ fn headings_keep_bubble_ink_and_quotes_own_a_readable_surface(cx: &mut TestAppCo
                 &geometry,
             );
             let content = [Inline::Text("A styled paragraph".into(), Style::default())];
+            let size = view.chat_text_size() / 2.;
             for inherit_ink in [false, true] {
                 let mut context = RichContext {
                     inherit_ink,
                     visuals: &visuals,
                     links: Links::new(view, "fixture", cx),
                     selection: &selection,
+                    size,
                     cx,
                 };
                 let mut heading = view.rich_paragraph(
@@ -141,6 +143,11 @@ fn headings_keep_bubble_ink_and_quotes_own_a_readable_surface(cx: &mut TestAppCo
                     (!inherit_ink).then(|| rgb(view.prose_ink(4)).into())
                 );
                 assert_eq!(heading.text_style().font_weight, Some(FontWeight::BOLD));
+                assert_eq!(
+                    heading.text_style().font_size,
+                    Some(px(size * rhythm::heading_scale(HeadingLevel::H2)).into()),
+                    "headings follow their message's text size"
+                );
                 let mut quote = view.rich_paragraph(Kind::Quote, 0, &content, 0, &mut context);
                 assert_eq!(
                     quote.style().background,

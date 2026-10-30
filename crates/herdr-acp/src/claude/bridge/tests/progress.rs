@@ -323,3 +323,34 @@ fn progress_slots_and_completed_task_identity_memory_are_bounded() {
     );
     assert!(bridge.next_tick().is_none());
 }
+
+#[test]
+fn task_progress_and_background_metadata_share_the_same_completion_fence() {
+    let mut bridge = opened();
+    prompt(&mut bridge, 2, "delegate");
+    start(&mut bridge, "tool-1", "Agent");
+    let started = bridge.on_harness(&task("task_started", "task-1"));
+    let row = update(&started[0])["toolCallId"].clone();
+    let mut launched = tool_result("tool-1", "Async agent launched");
+    launched["tool_use_result"] = json!({"isAsync": true, "agentId": "task-1"});
+    bridge.on_harness(&launched);
+    bridge.on_harness(&result("success", None));
+    let mut done = task("task_notification", "task-1");
+    done["status"] = json!("completed");
+    let mut foreign = done.clone();
+    foreign["run_id"] = json!("old-run");
+    assert!(bridge.on_harness(&foreign).is_empty());
+    foreign = done.clone();
+    foreign["session_id"] = json!("other");
+    assert!(bridge.on_harness(&foreign).is_empty());
+    let outs = bridge.on_harness(&done);
+    assert_eq!(outs.len(), 2);
+    assert_eq!(update(&outs[0])["toolCallId"], row);
+    assert_eq!(update(&outs[0])["status"], "completed");
+    assert_eq!(update(&outs[1])["toolCallId"], "tool-1");
+    assert_eq!(
+        update(&outs[1])["_meta"]["herdr"]["activity"]["state"],
+        "finished"
+    );
+    assert!(bridge.on_harness(&done).is_empty());
+}

@@ -176,6 +176,9 @@ bundle profile="release" features="":
     # Remote control runs the herdr-remote-control beside it as a user service.
     cp target/{{profile}}/herdr-remote-control "$app/Contents/MacOS/herdr-remote-control"
     cp assets/macos/Info.plist "$app/Contents/Info.plist"
+    for lproj in assets/macos/*.lproj; do
+        if [[ -d "$lproj" ]]; then cp -R "$lproj" "$app/Contents/Resources/"; fi
+    done
     # LaunchServices and the Dock cache icons by bundle ID, so every worktree
     # build sharing the release ID competed with the installed app's icon.
     plutil -replace CFBundleIdentifier -string so.pen.herdr-gpui.dev "$app/Contents/Info.plist"
@@ -202,6 +205,12 @@ check-sorted:
     python3 scripts/test_check_sorted.py
     python3 scripts/check-sorted.py
 
+# Fail when a Fluent message does not parse, repeats, or is unused, or an
+# `fl!` names none (docs/i18n.md).
+check-i18n:
+    PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_check_i18n.py
+    python3 scripts/check-i18n.py
+
 # Sort every `keep-sorted start`/`end` region in place.
 sort:
     python3 scripts/check-sorted.py --fix
@@ -217,7 +226,7 @@ test-mockup-wait:
 test-pr-closure:
     PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_close_low_confidence_prs.py
 
-ci: format-check check-file-size check-sorted lint test test-mockup-wait test-pr-closure
+ci: format-check check-file-size check-sorted check-i18n lint test test-mockup-wait test-pr-closure
 
 # Tools are listed in scripts/setup-ci.sh; Docker for lint-linux is only checked.
 # Install the tools local CI-equivalent runs need, on macOS or Ubuntu.

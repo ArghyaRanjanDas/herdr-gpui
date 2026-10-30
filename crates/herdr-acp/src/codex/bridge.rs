@@ -9,9 +9,10 @@ use std::{
 use acp::v1 as wire;
 use serde_json::{Value, json};
 
-use super::{approval, items, settings::Settings};
+use super::{approval, background, background::Background, items, settings::Settings};
 use crate::{
     harness::{Out, Translator, out},
+    project::Tag,
     rpc::Inbound,
 };
 
@@ -40,6 +41,7 @@ struct Opening {
 #[derive(Debug, Default)]
 pub(super) struct Bridge {
     asks: HashMap<i64, approval::Ask>,
+    background: Background,
     commands: commands::Commands,
     /// Codex's `model/list`, kept until the thread opens.
     models: Option<Value>,
@@ -340,8 +342,8 @@ impl Bridge {
 
     fn notification(&mut self, method: &str, params: &Value) -> Vec<Out> {
         let thread = params.get("threadId").and_then(Value::as_str);
-        if thread.is_some_and(|thread| Some(thread) != self.thread.as_deref()) {
-            return Vec::new();
+        if let Some(thread) = thread.filter(|thread| Some(*thread) != self.thread.as_deref()) {
+            return self.child(method, params, thread);
         }
         let session = self.session().to_owned();
         let text = |key: &str| params.get(key).and_then(Value::as_str);
@@ -362,6 +364,7 @@ impl Bridge {
             "item/commandExecution/outputDelta" => self.command_output(params),
             "item/started" => self.item_started(params),
             "item/completed" => self.item_completed(params),
+
             "turn/started" => self.turn_started(params.pointer("/turn/id")),
             "turn/completed"
                 if text("threadId") == self.thread.as_deref()
@@ -402,7 +405,10 @@ impl Bridge {
         let session = self.session().to_owned();
         let id = item.get("id").and_then(Value::as_str).unwrap_or_default();
         if item.get("type").and_then(Value::as_str) == Some("commandExecution") {
-            if !self.current_command(params) {
+            let background = params.get("threadId").and_then(Value::as_str)
+                == self.thread.as_deref()
+                && self.background.is_shell(id);
+            if !self.current_command(params) && !background {
                 return Vec::new();
             }
             // The final aggregate replaces streamed content, even when empty.
@@ -430,11 +436,70 @@ impl Bridge {
                     .into_iter()
                     .collect()
             }
-            _ => items::completed(item)
+            _ => {
+                let (own, others) = self.background.completed(item);
+                let mut outs: Vec<Out> = items::completed(item)
+                    .map(|update| {
+                        let update = match own {
+                            Some(report) => update.meta(Tag::activity(report).meta()),
+                            None => update,
+                        };
+                        out::update(&session, wire::SessionUpdate::ToolCallUpdate(update))
+                    })
+                    .into_iter()
+                    .collect();
+                outs.extend(others.into_iter().map(|other| self.reported(other)));
+                outs
+            }
+        }
+    }
+
+    /// An event of another thread: a sub-agent's calls show under the call
+    /// that spawned it, and its turn's end ends it. Other threads are not
+    /// this session's.
+    fn child(&mut self, method: &str, params: &Value, thread: &str) -> Vec<Out> {
+        let Some(parent) = self.background.parent(thread).map(str::to_owned) else {
+            return Vec::new();
+        };
+        let session = self.session().to_owned();
+        let item = params.get("item");
+        match method {
+            "item/started" => item
+                .and_then(items::started)
+                .map(|call| {
+                    let tag = Tag {
+                        parent: Some(parent),
+                        ..Tag::default()
+                    };
+                    out::update(
+                        &session,
+                        wire::SessionUpdate::ToolCall(call.meta(tag.meta())),
+                    )
+                })
+                .into_iter()
+                .collect(),
+            "item/completed" => item
+                .and_then(items::completed)
                 .map(|update| out::update(&session, wire::SessionUpdate::ToolCallUpdate(update)))
                 .into_iter()
                 .collect(),
+            "turn/completed" => {
+                let status = params.pointer("/turn/status").and_then(Value::as_str);
+                self.background
+                    .child_turn_completed(thread, status)
+                    .map(|ended| self.reported(ended))
+                    .into_iter()
+                    .collect()
+            }
+            _ => Vec::new(),
         }
+    }
+
+    /// The update that says how another call's activity stands.
+    fn reported(&self, (call, report): background::Elsewhere) -> Out {
+        let update = wire::ToolCallUpdate::new(call, wire::ToolCallUpdateFields::new())
+            .meta(Tag::activity(report).meta());
+        out::update(self.session(), wire::SessionUpdate::ToolCallUpdate(update))
     }
 
     fn usage(&mut self, usage: Option<&Value>) -> Vec<Out> {
@@ -460,10 +525,16 @@ impl Bridge {
     }
 
     fn turn_completed(&mut self, turn: Option<&Value>) -> Vec<Out> {
-        let Some(id) = self.prompt.take() else {
-            return Vec::new();
-        };
         let mut outs = self.tick();
+        let backgrounded = self.background.turn_ended();
+        outs.extend(
+            backgrounded
+                .into_iter()
+                .map(|started| self.reported(started)),
+        );
+        let Some(id) = self.prompt.take() else {
+            return outs;
+        };
         self.turn = None;
         self.interrupting = false;
         self.streamed.clear();

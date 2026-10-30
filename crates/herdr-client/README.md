@@ -53,7 +53,13 @@ delete_local_session(executable: &Path, name: &str) -> Result<()>
 delete_remote_session(target: &str, name: &str) -> Result<()>
 ConnectOptions { surface_size: ClientSurfaceSize, cell_width_px: u32, cell_height_px: u32 }
 HostTheme { pub foreground: ClientHostColor, pub background: ClientHostColor, pub palette: [ClientHostColor; 256], pub appearance: ClientHostAppearance }
+text::caption(&str) -> Option<&str>
+text::tab_label(&ClientShellSnapshot, &ClientShellTab) -> &str
 ```
+
+The text helpers unwrap an agent's leading `pasted_content` envelope for display;
+a wrapper-only title falls back to a pane, agent, or workspace caption. They
+leave the authoritative snapshot and ordinary titles unchanged.
 
 `store_saved_host` atomically appends a validated profile without connecting to
 or provisioning the remote host. It preserves existing profiles and selection,
@@ -475,7 +481,13 @@ SSH runs entirely on the connection worker using the system `ssh`, existing
 OpenSSH configuration/agent credentials, strict known-host verification, and no
 password prompts, agent/X11 forwarding, port forwards, or persistent control
 master. It discovers a POSIX remote binary on PATH (excluding mise shims), then
-the upstream local-bin, Homebrew, and Nix roots. Each candidate is checked with
+the upstream local-bin, Homebrew, and Nix roots, then mise's installed `latest`
+links. Mise discovery uses `$MISE_DATA_DIR`, otherwise `$XDG_DATA_HOME/mise` or
+`$HOME/.local/share/mise`. It checks `installs/<tool>/latest/bin/herdr` and
+`installs/<tool>/latest/herdr` for `herdr`, `github-herdrdev-herdr`, and
+`github-ogulcancelik-herdr`.
+These are direct executable paths: discovery never invokes mise, sources shell
+profiles, evaluates project configuration, or installs tools. Each candidate is checked with
 `status client --json` for generation and required capabilities before executing
 `--session <session> remote-client-bridge`; advertised bridge idle timeouts are
 enabled. Welcome negotiation validates the actual running daemon again.

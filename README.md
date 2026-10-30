@@ -304,7 +304,9 @@ and `libasound2-dev` for Rodio/CPAL native audio. CI and release builds use the
 same script. Linux binaries require the system ALSA shared library (`libasound2t64`
 on Ubuntu 24.04), a configured default audio device, and Vulkan for rendering.
 Audio normally routes through the desktop's ALSA plugin configuration; no CLI
-audio player is required. Custom notification sounds are MP3 only. See
+audio player is required. Terminal clipboard paste needs `wl-paste` (the
+`wl-clipboard` package) on Wayland or `xclip` on X11; the distribution packages
+and Nix build include these dependencies. Custom notification sounds are MP3 only. See
 [notification sounds](crates/herdr-gpui/README.md#notification-sounds).
 
 ### Windows
@@ -404,6 +406,13 @@ The daemon owns the terminals and all session state. The GUI attaches to the
 binary **client** socket, renders the surfaces it is sent, and sends semantic
 input back. Closing or detaching the GUI leaves the daemon and its terminals
 running.
+
+### macOS Git permission errors
+
+If Git in a Herdr UI terminal reports `Operation not permitted`, restarting the
+GUI alone does not restart an already-running daemon. For a recovery option and
+its risks, see the [macOS Git permission troubleshooting
+section](crates/herdr-gpui/README.md#macos-git-permission-troubleshooting).
 
 [Browser tabs](crates/herdr-gpui/README.md#browser-tabs) are the exception:
 Herdr has no browser panes, so web pages shown beside a workspace's terminals

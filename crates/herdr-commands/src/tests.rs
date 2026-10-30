@@ -59,6 +59,7 @@ fn catalog_has_all_native_commands_and_gpui_shortcuts() {
         (ResizeUp, &[]),
         (ResizeDown, &[]),
         (ResizeMode, &[]),
+        (EqualizeSplits, &[]),
         (RenamePane, &[]),
         (MovePane, &[]),
         (Zoom, &["cmd-shift-enter"]),
@@ -147,7 +148,7 @@ fn catalog_has_all_native_commands_and_gpui_shortcuts() {
         assert_eq!(info.command, command);
         assert_eq!(info.base_shortcuts(), shortcuts);
         assert!(!info.name.is_empty());
-        assert!(!info.label.is_empty());
+        assert!(info.message.starts_with("commands-"));
         let value = match command {
             TabNumber(number) => json!({"TabNumber": number}),
             WorkspaceNumber(number) => json!({"WorkspaceNumber": number}),
@@ -217,6 +218,7 @@ fn gui_commands_never_send_daemon_requests() {
         Command::Back,
         Command::Forward,
         Command::ResizeMode,
+        Command::EqualizeSplits,
         Command::RenamePane,
         Command::MovePane,
         Command::PreviousWorkspace,
@@ -573,3 +575,5 @@ fn tab_moves_wrap_and_stay_in_workspace() {
     assert!(request(Command::MoveTabNext, &s).is_none());
     assert!(request(Command::MoveTabPrevious, &s).is_none());
 }
+
+mod messages;

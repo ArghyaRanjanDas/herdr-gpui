@@ -165,7 +165,7 @@ mod linux {
     pub(super) fn read(image_only: bool) -> Result<Option<ClipboardItem>> {
         read_commands(
             image_only,
-            std::env::var_os("WAYLAND_DISPLAY").is_some(),
+            wayland_session(),
             std::env::var_os("DISPLAY").is_some(),
             |program, args, limit, deadline| {
                 output(
@@ -175,6 +175,80 @@ mod linux {
                 )
             },
         )
+    }
+
+    /// Whether a Wayland compositor can actually answer, decided by its socket
+    /// rather than by the variable alone. A session started from a display
+    /// manager can inherit `WAYLAND_DISPLAY` while running through X11; the
+    /// variable then names a socket nothing listens on, `wl-paste` fails, and
+    /// the X11 selection is never read because XWayland must not be a fallback
+    /// for a live Wayland session.
+    #[cfg(target_os = "linux")]
+    fn wayland_session() -> bool {
+        wayland_socket(
+            std::env::var_os("WAYLAND_DISPLAY").as_deref(),
+            std::env::var_os("XDG_RUNTIME_DIR").as_deref(),
+        )
+    }
+
+    /// The compositor socket named by `WAYLAND_DISPLAY`, resolved against
+    /// `XDG_RUNTIME_DIR` when the name is relative, must accept a connection.
+    /// A crashed compositor can leave its socket on disk, so the file existing
+    /// is not enough: connecting proves that something still answers.
+    ///
+    /// The attempt never blocks. A compositor that is busy (its accept queue is
+    /// full) still exists, so it keeps the Wayland helper; only a socket that
+    /// refuses the connection falls back to X11, which is why this runs before
+    /// the paste deadline rather than inside it.
+    #[cfg(target_os = "linux")]
+    fn wayland_socket(
+        display: Option<&std::ffi::OsStr>,
+        runtime: Option<&std::ffi::OsStr>,
+    ) -> bool {
+        use nix::sys::socket::{AddressFamily, SockFlag, SockType, UnixAddr, connect, socket};
+        use rustix::event::{PollFd, PollFlags, Timespec, poll};
+        use std::os::fd::AsRawFd;
+
+        let Some(display) = display else {
+            return false;
+        };
+        let display = std::path::Path::new(display);
+        let socket_path = if display.is_absolute() {
+            display.to_path_buf()
+        } else {
+            let Some(runtime) = runtime else {
+                return false;
+            };
+            std::path::Path::new(runtime).join(display)
+        };
+        let Ok(address) = UnixAddr::new(&socket_path) else {
+            return false;
+        };
+        let flags = SockFlag::SOCK_NONBLOCK | SockFlag::SOCK_CLOEXEC;
+        let Ok(socket) = socket(AddressFamily::Unix, SockType::Stream, flags, None) else {
+            return false;
+        };
+        match connect(socket.as_raw_fd(), &address) {
+            Ok(()) => true,
+            // A full accept queue means a compositor is there but busy.
+            Err(nix::errno::Errno::EAGAIN) => true,
+            Err(nix::errno::Errno::EINPROGRESS) => {
+                let mut fds = [PollFd::new(&socket, PollFlags::OUT)];
+                let timeout = Timespec {
+                    tv_sec: 0,
+                    tv_nsec: 50_000_000,
+                };
+                match poll(&mut fds, Some(&timeout)) {
+                    // Still pending after the budget: assume a busy compositor
+                    // rather than reading XWayland behind a live Wayland session.
+                    Ok(0) | Err(_) => true,
+                    Ok(_) => !fds[0]
+                        .revents()
+                        .intersects(PollFlags::ERR | PollFlags::HUP | PollFlags::NVAL),
+                }
+            }
+            Err(_) => false,
+        }
     }
 
     fn read_commands(
@@ -199,7 +273,9 @@ mod linux {
                         &["--no-newline", "--type", mime][..],
                     ),
                     (
-                        x11,
+                        // XWayland may hold a different selection. Never use
+                        // it as a fallback for an empty/unsupported Wayland offer.
+                        x11 && !wayland,
                         "xclip",
                         &["-selection", "clipboard", "-t", mime, "-o"][..],
                     ),
@@ -256,7 +332,6 @@ mod linux {
         command.stdout(Stdio::null());
         let mut child = match spawned {
             Ok(child) => child,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(error) => {
                 return Err(Error::Process(error).into());
             }
@@ -310,6 +385,8 @@ mod linux {
     mod tests {
         use super::*;
 
+        mod current_selection;
+
         #[test]
         fn commands_preserve_text_and_skip_image_requests() -> Result<()> {
             let item = read_commands(false, true, true, |program, args, limit, _| {
@@ -343,7 +420,7 @@ mod linux {
         fn image_commands_fall_back_and_reject_text_from_image_targets() -> Result<()> {
             let mut calls = Vec::new();
             let mut first_deadline = None;
-            let item = read_commands(true, true, true, |program, args, limit, deadline| {
+            let item = read_commands(true, false, true, |program, args, limit, deadline| {
                 assert_eq!(limit, IMAGE_LIMIT);
                 assert_eq!(*first_deadline.get_or_insert(deadline), deadline);
                 calls.push(program.to_owned());
@@ -353,12 +430,7 @@ mod linux {
                     Ok(Some(b"not an image".to_vec()))
                 }
             })?;
-            assert_eq!(
-                calls,
-                [
-                    "wl-paste", "xclip", "wl-paste", "xclip", "wl-paste", "xclip"
-                ]
-            );
+            assert_eq!(calls, ["xclip", "xclip", "xclip"]);
             assert!(matches!(item.as_ref().map(|item| item.entries()),
                 Some([gpui::ClipboardEntry::Image(image)]) if image.format == ImageFormat::Jpeg));
             assert!(
@@ -386,14 +458,15 @@ mod linux {
             ));
             assert!(run("printf partial; exit 1", 16)?.is_none());
             assert_eq!(run("exit 0", 0)?, Some(Vec::new()));
-            assert!(
+            assert!(matches!(
                 output(
                     &mut Command::new("/nonexistent/herdr-clipboard-helper"),
                     4,
                     Instant::now() + Duration::from_secs(3)
-                )?
-                .is_none()
-            );
+                ),
+                Err(crate::Error::Clipboard(Error::Process(error)))
+                    if error.kind() == io::ErrorKind::NotFound
+            ));
             Ok(())
         }
 

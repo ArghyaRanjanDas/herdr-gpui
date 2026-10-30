@@ -46,7 +46,12 @@ fn every_layout_keeps_live_activity_above_input_and_stops_animation_when_idle(
         let activity = cx.debug_bounds("chat-live-activity").unwrap();
         let composer = cx.debug_bounds("chat-composer").unwrap();
         assert!(activity.bottom() <= composer.top(), "{layout:?}");
-        assert!(cx.debug_bounds("chat-live-moving").is_some());
+        let moving = if layout == ChatLayoutMode::IMessage {
+            "chat-typing"
+        } else {
+            "chat-live-moving"
+        };
+        assert!(cx.debug_bounds(moving).is_some());
         assert!(cx.debug_bounds("chat-live-metrics").is_some());
     }
     send(
@@ -60,7 +65,7 @@ fn every_layout_keeps_live_activity_above_input_and_stops_animation_when_idle(
     );
     wait_until(|| {
         poll(&view, &program, cx);
-        cx.debug_bounds("chat-live-moving").is_none()
+        cx.debug_bounds("chat-live-moving").is_none() && cx.debug_bounds("chat-typing").is_none()
     });
     assert!(cx.debug_bounds("chat-live-activity").is_some());
 }

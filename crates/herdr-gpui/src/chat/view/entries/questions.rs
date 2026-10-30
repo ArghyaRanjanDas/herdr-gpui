@@ -26,8 +26,15 @@ impl HerdrWindow {
         let Some(Body::Answers { text, parts }) = body.as_deref() else {
             return div().child("Preparing answers…");
         };
-        let message =
-            self.render_chat_message(pane_id, entry.id, parts, &chat.prepared.visuals, true, cx);
+        let message = self.render_chat_message(
+            pane_id,
+            entry.id,
+            parts,
+            &chat.prepared.visuals,
+            true,
+            self.chat_text_size(),
+            cx,
+        );
         let id = entry.id.0;
         div()
             .debug_selector(move || format!("chat-answers-{id}"))

@@ -87,6 +87,7 @@ fn bodies_are_prepared_once_per_revision() {
                 content: Vec::new(),
                 kind: ToolKind::Read,
                 locations: Vec::new(),
+                parent: None,
                 status: ToolStatus::Completed,
                 title: "Read".into(),
             }),

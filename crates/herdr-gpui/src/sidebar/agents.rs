@@ -3,6 +3,7 @@
 //! at terminal output.
 
 use super::{STATUS_DOT_UNKNOWN, STATUS_WIDTH, first_text, label_text, line_height};
+use crate::direction::Logical;
 use crate::{
     HerdrWindow,
     config::{FontConfig, StatusIcons, Theme},
@@ -150,7 +151,7 @@ pub(super) fn agent_names(agent: &ClientShellAgent) -> [Option<&str>; 4] {
         agent.display_agent.as_deref(),
         agent.name.as_deref(),
         agent.agent.as_deref(),
-        agent.title.as_deref(),
+        agent.title.as_deref().and_then(herdr_client::text::caption),
     ]
 }
 
@@ -158,7 +159,7 @@ pub(super) fn agent_names(agent: &ClientShellAgent) -> [Option<&str>; 4] {
 /// otherwise the title an unnamed pane already carries. Both are untrusted
 /// daemon and terminal text, so the name is safe, bounded text, and none when
 /// it is blank or only repeats the agent's `name`.
-pub(super) fn pane_name(
+pub(crate) fn pane_name(
     agent: &ClientShellAgent,
     snapshot: &ClientShellSnapshot,
     name: &str,
@@ -178,7 +179,8 @@ pub(super) fn pane_name(
 pub(super) const PANE_CAPTION_LIMIT: usize = 160;
 
 fn safe_caption(text: Option<&str>) -> Option<String> {
-    let text = crate::notifications::safe_text(text?, PANE_CAPTION_LIMIT);
+    let text =
+        crate::notifications::safe_text(herdr_client::text::caption(text?)?, PANE_CAPTION_LIMIT);
     let text = text.trim();
     (!text.is_empty()).then(|| text.to_owned())
 }
@@ -204,7 +206,7 @@ pub(super) fn agent_place<'a>(
         .iter()
         .find(|tab| tab.tab_id == agent.tab_id)
         .filter(|tab| tabs > 1 || tab.custom_label)
-        .map(|tab| tab.label.as_str());
+        .and_then(|tab| herdr_client::text::caption(&tab.label));
     Some((workspace.label.as_str(), tab))
 }
 
@@ -335,11 +337,11 @@ impl Indicators {
             div()
                 .debug_selector(|| format!("rail-{key}"))
                 .absolute()
-                .left_0()
+                .inset_s(px(0.))
                 .top(relative(RAIL_INSET))
                 .bottom(relative(RAIL_INSET))
                 .w(px(RAIL_WIDTH))
-                .rounded_r(px(RAIL_WIDTH))
+                .rounded_e(px(RAIL_WIDTH))
                 .bg(rgb(self.color(status))),
         )
     }
@@ -395,7 +397,7 @@ pub(super) fn status_mark(
         .h(px(STATUS_WIDTH))
         .mt(px((line_height(font) - STATUS_WIDTH) / 2.))
         .flex_none()
-        .flex()
+        .row()
         .items_center()
         .justify_center()
         .when(status == AgentStatus::Working, |slot| {
@@ -456,7 +458,7 @@ fn spin(mark: Svg, id: &'static str, period_ms: u64) -> impl IntoElement {
 fn status_icon(status: AgentStatus, font: &FontConfig, indicators: Indicators, color: u32) -> Div {
     let (icons, fade) = (indicators.icons, indicators.fade());
     let size = icon_size(font);
-    let slot = div().flex_none().flex().items_center().justify_center();
+    let slot = div().flex_none().row().items_center().justify_center();
     if icons != StatusIcons::Tiles {
         return slot
             .size(px(size))

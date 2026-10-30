@@ -37,7 +37,6 @@ server = [
     "dep:tokio-rustls",
     "dep:tracing-subscriber",
     "dep:ureq",
-    "dep:url",
     "dep:webpki-roots",
     "dep:x509-parser",
 ]
@@ -50,6 +49,7 @@ required-features = ["server"]
 [dependencies]
 herdr-chat-protocol.workspace = true
 herdr-client.workspace        = true
+herdr-github.workspace        = true
 # The pairing dialog's QR code, drawn by Herdr UI.
 qrcode.workspace              = true
 # The macOS user ID the LaunchAgent loads under, and the server's host name.
@@ -60,6 +60,7 @@ thiserror.workspace           = true
 # Settings edits to the `[remote]` table.
 toml_edit.workspace           = true
 tracing.workspace             = true
+url.workspace                 = true
 uuid.workspace                = true
 
 aes-gcm        = { optional = true, workspace = true }
@@ -85,7 +86,6 @@ tokio-rustls   = { optional = true, workspace = true }
 # The daemon log: requests, refused handshakes, and errors phones report.
 tracing-subscriber = { features = ["fmt"], optional = true, workspace = true }
 ureq           = { optional = true, workspace = true }
-url            = { optional = true, workspace = true }
 webpki-roots   = { optional = true, workspace = true }
 x509-parser    = { optional = true, workspace = true }
 

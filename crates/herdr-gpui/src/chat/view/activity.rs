@@ -298,7 +298,24 @@ impl HerdrWindow {
                             .truncate()
                             .text_color(rgb(theme.subtext()))
                             .child(text)
-                    })),
+                    }))
+                    .map(|row| {
+                        // Preserve the layout's native typing cue without a second
+                        // working strip; shared usage metrics remain below it.
+                        if phase.moving()
+                            && self.config.chat.layout == crate::config::ChatLayoutMode::IMessage
+                        {
+                            let working = super::working::Working::of(
+                                chat.session.transcript(),
+                                super::super::now_ms(),
+                            );
+                            super::layout::layout_for(self.config.chat.layout)
+                                .working(working.as_ref(), &self.chat_look())
+                                .unwrap_or(row)
+                        } else {
+                            row
+                        }
+                    }),
             )
             .when(!metrics.is_empty(), |row| {
                 row.child(

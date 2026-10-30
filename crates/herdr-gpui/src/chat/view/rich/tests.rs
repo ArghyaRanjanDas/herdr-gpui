@@ -6,6 +6,7 @@ use crate::{
 
 mod accents;
 mod imessage;
+mod math_size;
 mod typography;
 
 #[core::prelude::v1::test]

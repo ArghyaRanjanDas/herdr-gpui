@@ -131,10 +131,17 @@ impl Bridge {
         };
         let kind = message.get("subtype").and_then(Value::as_str);
         if kind == Some("task_started") {
-            return self.task_started(message, id, run);
+            let mut outs = self.task_started(message, id, run);
+            // An SDK event can lack the description needed for a progress
+            // card while still naming a known background activity. A rejected
+            // replay must not retag a task whose run we already know.
+            if !outs.is_empty() || !self.progress.tasks.contains_key(id) {
+                outs.extend(self.system(message));
+            }
+            return outs;
         }
         let Some(task) = self.progress.tasks.get(id) else {
-            return Vec::new();
+            return self.system(message);
         };
         // Run IDs are opaque but ordered by the SDK. Events without a run ID
         // cannot update a run whose identity was explicitly reported.
@@ -164,7 +171,9 @@ impl Bridge {
                 let Some(status) = terminal(message.get("status").and_then(Value::as_str)) else {
                     return Vec::new();
                 };
-                self.finish_task(id, status, Some(task_content(message)), true)
+                let mut outs = self.finish_task(id, status, Some(task_content(message)), true);
+                outs.extend(self.system(message));
+                outs
             }
             Some("task_updated") if !task.terminal => {
                 let patch = &message["patch"];

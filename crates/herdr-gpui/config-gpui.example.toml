@@ -16,6 +16,11 @@
 # none. Uninstalled names are ignored, and at most 8 are accepted per section.
 # With none installed and [terminal] fallback unset, a pane showing an icon
 # brings up a dismissible card naming a Nerd Font to install.
+# [sidebar], [tabs], and [ui] then fall back to the platform's Chinese,
+# Japanese, and Korean faces (PingFang and Hiragino on macOS, Microsoft YaHei
+# and Yu Gothic on Windows, Noto Sans CJK on Linux), the one matching the
+# first CJK language in `language` or the system's languages first, so Han
+# characters take that region's shapes. [terminal] keeps the icons alone.
 # Saved changes to the local file reload automatically in every GUI window.
 
 # Built-ins: Default, Nord, Dracula, Catppuccin Mocha, Catppuccin Latte, plus
@@ -38,6 +43,12 @@ contrast = "standard"
 # the theme, "system" from Windows Settings > Personalization > Colors.
 # Other platforms keep the theme's. Terminal colors never change with it.
 accent = "theme"
+# The language of the app's own text: "system" follows the OS's preferred
+# languages, or a BCP 47 tag such as "fr-CA". Only English ships so far, so
+# any other language shows English. "en-XA" (accented and longer) and "en-XB"
+# (right to left) are pseudo-locales for testing; see docs/i18n.md. Terminal
+# output, names, and what the daemon reports never change with it.
+language = "system"
 
 # Ask before closing a tab (closing terminates its terminal processes).
 confirm_close_tab = true
@@ -230,6 +241,12 @@ project_roots = []
 # which are promoted to stable once they prove out; Homebrew only sees stable.
 # [updates]
 # channel = "stable"
+
+# Where the managed agent skill may go on its own, over the answer saved when
+# the app asked. "local" keeps it off saved SSH hosts; "off" never offers,
+# refreshes, or removes it anywhere. Settings and the palette still install it.
+# [agent_skill]
+# install = "ask"
 
 # Native shortcuts. Each key is a command; the value is one keystroke or a list,
 # primary first. "" or [] unbinds it. Assigning a keystroke here takes it away
@@ -541,6 +558,21 @@ size = 12
 # its organizations, or one of its owners below is read with that account;
 # every other repository with the main sign-in. At most 8 accounts.
 # accounts = [{ id = "0123456789abcdef0123456789abcdef", owners = ["my-emu-org"] }]
+
+# GitLab tokens the Orchestrator reads issues with: GITLAB_TOKEN from the
+# checkout's .envrc (through direnv), then from your login shell, then the
+# account connected (Connect) or the token pasted in the title bar's account
+# menu (scope read_api; kept per instance in the credential store), then the
+# GitLab CLI's sign-in. Tokens are never read from this file.
+# [gitlab]
+# Same meaning as [github] allow_plaintext_credentials, for the saved tokens,
+# which are kept in their own 0600 gitlab-credentials file. Default is false.
+# allow_plaintext_credentials = false
+# The OAuth application that lets Connect sign in on a self-managed instance,
+# by instance. Register it on the instance (Settings > Applications): not
+# confidential, scope read_api; its redirect URI is never visited. gitlab.com
+# uses Herdr UI's own application unless one is set here.
+# applications = { "gitlab.example.com" = "<application id>" }
 
 # A Coder deployment whose workspaces can be created and added as devices from
 # the device picker's "Add Coder Workspace…". Settings > Cloud devices edits

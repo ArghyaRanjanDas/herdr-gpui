@@ -66,8 +66,9 @@ pub(crate) enum Event {
     },
     /// Open a web address, such as an issue's page, in a browser tab.
     OpenUrl(String),
-    /// Sign in to GitHub, which the view needs to list a repository.
-    SignIn,
+    /// Sign in to the provider the view needs to list a repository: the
+    /// account menu's GitHub or GitLab page.
+    SignIn(Provider),
     /// Start `request` on the host `endpoint`, which the window sets it up
     /// for, then hands back through [`OrchestratorView::dispatch_elsewhere`].
     Dispatch {
@@ -125,6 +126,15 @@ impl DetailTab {
             Self::Details => "Details",
         }
     }
+}
+
+/// A GitLab project a view reads: the host its remote names, the scheme
+/// that remote reads it over, and the checkout when it is on this computer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct GitLabRead {
+    pub(crate) host: String,
+    pub(crate) scheme: herdr_orchestrator::gitlab::Scheme,
+    pub(crate) checkout: Option<std::path::PathBuf>,
 }
 
 pub(crate) struct OrchestratorView {
@@ -359,7 +369,7 @@ impl OrchestratorView {
             .detail
             .as_ref()
             .and_then(|detail| self.item(&detail.key))
-            .and_then(|item| item.pull_request.as_ref())
+            .and_then(|item| item.github_pull_request())
             .map(|pr| pr.number);
         if let (Some(number), Some(service)) = (number, self.service()) {
             service.load_pull_request(number);
@@ -546,6 +556,41 @@ impl OrchestratorView {
         self.reload_conversation();
     }
 
+    /// The GitLab hosts this view's repositories are read from.
+    pub(crate) fn gitlab_hosts(&self) -> impl Iterator<Item = GitLabRead> + '_ {
+        self.repos.iter().flat_map(|repo| {
+            let info = repo.snapshot.repo.as_ref();
+            // A remote checkout's .envrc is that machine's, not run here.
+            let checkout = (!repo.request.target.is_remote())
+                .then(|| std::path::PathBuf::from(&repo.request.checkout));
+            repo.snapshot
+                .sources
+                .iter()
+                .filter(|status| status.key.provider == Provider::Gitlab)
+                .map(move |status| GitLabRead {
+                    host: status.key.host.clone(),
+                    scheme: herdr_orchestrator::gitlab::Scheme::of_source(info, &status.key),
+                    checkout: checkout.clone(),
+                })
+        })
+    }
+
+    /// A GitLab source waits for a token that works.
+    pub(crate) fn gitlab_needs_sign_in(&self) -> bool {
+        self.repos
+            .iter()
+            .flat_map(|repo| &repo.snapshot.sources)
+            .any(|status| {
+                status.key.provider == Provider::Gitlab && matches!(status.state, SyncState::SignIn)
+            })
+    }
+
+    /// A saved credential changed: sync again, as Refresh does.
+    pub(crate) fn credentials_changed(&mut self, cx: &mut Context<Self>) {
+        self.refresh();
+        cx.notify();
+    }
+
     /// Whether a sync is under way, or Refresh was pressed so recently that
     /// the workers may not have reported starting one yet.
     pub(crate) fn refreshing(&self) -> bool {
@@ -613,7 +658,7 @@ impl OrchestratorView {
         let Some(item) = self.item(&key) else {
             return;
         };
-        let pull_request = item.pull_request.is_some();
+        let pull_request = item.github_pull_request().is_some();
         self.detail = Some(Detail {
             key,
             tab: if pull_request {
@@ -760,7 +805,7 @@ impl OrchestratorView {
                 let index = event.keystroke.key.parse::<usize>().unwrap_or(1) - 1;
                 let pull_request = self
                     .item(&detail.key)
-                    .is_some_and(|item| item.pull_request.is_some());
+                    .is_some_and(|item| item.github_pull_request().is_some());
                 let tabs = DetailTab::tabs(pull_request);
                 let mut detail = detail.clone();
                 detail.tab = tabs[index.min(tabs.len() - 1)];

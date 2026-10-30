@@ -200,6 +200,22 @@ fn changes(previous: &Transcript, next: &Transcript) -> Option<Vec<Change>> {
     if previous.turn != next.turn {
         changes.push(Change::Turn { turn: next.turn });
     }
+    // The reducer only adds and replaces activities; one that is gone needs
+    // a snapshot.
+    if previous
+        .activities
+        .iter()
+        .any(|old| next.activity(&old.call_id).is_none())
+    {
+        return None;
+    }
+    for activity in &next.activities {
+        if previous.activity(&activity.call_id) != Some(activity) {
+            changes.push(Change::Activity {
+                activity: activity.clone(),
+            });
+        }
+    }
     // If truncation was caused by skipping a record, rather than dropping an
     // entry, only a snapshot can carry the flag accurately.
     if next.truncated

@@ -18,6 +18,7 @@ fn expanded_edits_show_copyable_diff_with_both_sides(cx: &mut TestAppContext) {
                 vec![Entry {
                     id: EntryId(1),
                     kind: EntryKind::Tool(Tool {
+                        parent: None,
                         call_id: "synthetic-diff".into(),
                         title: "Update sample".into(),
                         kind: ToolKind::Edit,
