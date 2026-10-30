@@ -110,11 +110,13 @@ fn typing_shows_while_the_agent_works(cx: &mut TestAppContext) {
         transcript: Box::new(transcript),
     };
     let _stream = attach_with(&view, &program, snapshot, cx);
-    // Every layout now shares the same live activity strip.
+    // The shared strip uses the layout's native typing cue in iMessage.
     assert!(cx.debug_bounds("chat-live-moving").is_some());
     imessage(&view, &program, cx);
     let prompt = cx.debug_bounds("chat-imessage-1").unwrap();
-    let typing = cx.debug_bounds("chat-live-moving").unwrap();
+    let typing = cx.debug_bounds("chat-typing").unwrap();
+    assert!(cx.debug_bounds("chat-live-activity").is_some());
+    assert!(cx.debug_bounds("chat-live-moving").is_none());
     assert!(typing.top() >= prompt.bottom(), "under the conversation");
     let composer = cx.debug_bounds("chat-composer").unwrap();
     assert!(typing.bottom() <= composer.top(), "above the composer");
@@ -127,6 +129,7 @@ fn typing_is_gone_once_the_turn_ends(cx: &mut TestAppContext) {
     let _stream = attach_with(&view, &program, conversation(false), cx);
     imessage(&view, &program, cx);
     assert!(cx.debug_bounds("chat-live-moving").is_none());
+    assert!(cx.debug_bounds("chat-typing").is_none());
 }
 
 #[gpui::test]
