@@ -1,24 +1,24 @@
 {
   "phase": "after",
-  "binary_source_commit": "c4a2cffaa9174df7a1c6cdc03be1cd3808cb80d8",
-  "binary_source_manifest_sha256": "6a5f9e99d19a4499a6b2717b8f09b007ffbbdd7bedacf9e2f89196609abb619c",
-  "binary_sha256": "25e4d965128fc19e6a6365b389aa086eae5675fa83bd196b2cbf1aef9759e4a8",
+  "binary_source_commit": "ba3289630a66df9cca6c95471d8b8cc18a41f60c",
+  "binary_source_manifest_sha256": "024cb16824bb18d988f9c6e716ab733b42ed87c926cfe37afb9bb583f7cff048",
+  "binary_sha256": "fb1df045127468da3f39970aaa481c58f9b21b8d160983ddab4fe2acefff64a5",
   "driver_hashes": {
     "scripts/check-rich-chat-native.py": "7f5e67801569efb8f260a2b8bd4216ba00d2fdfe98a3b9f4136811d0e56afe56",
     "scripts/rich_chat_native_input.py": "4d0a8b7eee05e40e641668de9993cbf03741184ca96facf077f85c1b6f1eb50f",
     "scripts/rich_chat_resize.py": "254e0b9c237fec98a3f89332263542fb3661511092af28a3a7d27ca1b5465758",
-    "crates/herdr-gpui/src/chat/preview.rs": "b8cdfe024fe74f09d8db9f07aa5385754f32d54d0fd43bb8a96c2f0f90f823af",
-    "crates/herdr-gpui/src/chat/preview/tools.rs": "ea29173fe7ea9e7edf95fff5029dad47406026c32e49b95e606051be54c27359",
-    "crates/herdr-gpui/src/chat/preview/disclosure.rs": "dcc9dbf830f158cfaec82d8e3e47b6ad5c65c752118b6d23a25575d409e97173",
+    "crates/herdr-gpui/src/chat/preview.rs": "fa56ebfef7aedb3c4a5468d9a4bbdc89826f4bfe6e19088f4dd6038c615f6e56",
+    "crates/herdr-gpui/src/chat/preview/tools.rs": "837ad8254b761b72a1c313ba613b8cea2fa1600489e178c704e6e32eec72b07e",
+    "crates/herdr-gpui/src/chat/preview/disclosure.rs": "0612a718251f8e1953fc1f415dfa060585e61892b21b614538a08729a630773b",
     "scripts/rich_chat_disclosure.py": "49c7267fb44171a87805ce554e74a7f62895db46a7848eceaee5413b6cafa911",
     "crates/herdr-gpui/src/chat/preview/jump.rs": "4ec319737e689825f5d23872479a85f780044d347ded84460f252f0de4a0ee0a",
     "scripts/rich_chat_jump.py": "b90a59346f0d0c7ac347cb4379d22029935d19c0a52bdc7dd06cf3b47b3802f5",
-    "crates/herdr-gpui/src/chat/view/jump.rs": "70182b7eb9d989bfed344878ac97bacbd55fd159b215770f819cbc9948469793",
+    "crates/herdr-gpui/src/chat/view/jump.rs": "ef359bb24ce2e2759a44b83a5cd58b9f3f0d32a41097e466cb2eeec04262fd9c",
     "assets/icons/arrow-down.svg": "f479f54ec954121315ea28a9fac8e5e62f4e9cd4ef974eddad5d5a1d5da2fb8f",
-    "crates/herdr-gpui/src/icons.rs": "aeb00851b9ee1f947dd9b5730e76cdffb70e555e4c1585feca79a919f97c43f7",
-    "crates/herdr-gpui/src/chat/preview/activity.rs": "c4b1c4d4a4306e2613c5cb4ab0928db50815f53727eb1881f0cf539c4320bd43"
+    "crates/herdr-gpui/src/icons.rs": "06df371d1163686352e5a0eb43659cbcb20c324ee01b736ceaf94f8fbfb04797",
+    "crates/herdr-gpui/src/chat/preview/activity.rs": "fc2d4b29b0ac1f38f77aa79618c0b39ad63f9ea47f9530ab7a9b0645c639a4a5"
   },
-  "wrapper_sha256": "65b9a62b948c19f3871fb142404a3a4aa7dc289b4ffd1b06520f125613188107",
+  "wrapper_sha256": "733ed7279778dcd5252868325f490e1fbadd20bf60f47efb874bda30bb267c87",
   "publication_capture_sha256": "85f592db0ad044918123c57918c35ee1f6edf96dcfc12b33ec19d11542d65c13",
   "scope": "Synthetic fixture only; no connected agent, daemon, or desktop interaction.",
   "captures": [
@@ -28,7 +28,7 @@
       "size": "narrow",
       "layout": "default bubbles",
       "status": "passed",
-      "seconds": 5.16
+      "seconds": 5.28
     },
     {
       "case": "code",
@@ -36,7 +36,7 @@
       "size": "wide",
       "layout": "default bubbles",
       "status": "passed",
-      "seconds": 4.34
+      "seconds": 4.39
     },
     {
       "case": "tool-disclosure",
@@ -44,7 +44,7 @@
       "size": "wide",
       "layout": "default bubbles",
       "status": "passed",
-      "seconds": 21.76
+      "seconds": 21.86
     },
     {
       "case": "tool-disclosure",
@@ -52,7 +52,7 @@
       "size": "narrow",
       "layout": "default bubbles",
       "status": "passed",
-      "seconds": 21.61
+      "seconds": 21.58
     },
     {
       "case": "tools-open",
@@ -60,7 +60,7 @@
       "size": "wide",
       "layout": "default bubbles",
       "status": "passed",
-      "seconds": 21.75
+      "seconds": 21.72
     },
     {
       "case": "tools-open",
@@ -68,7 +68,7 @@
       "size": "narrow",
       "layout": "default bubbles",
       "status": "passed",
-      "seconds": 21.55
+      "seconds": 21.74
     },
     {
       "case": "input-resize",
@@ -76,7 +76,7 @@
       "size": "wide",
       "layout": "default bubbles",
       "status": "passed",
-      "seconds": 16.65
+      "seconds": 16.7
     },
     {
       "case": "selection",
@@ -84,7 +84,7 @@
       "size": "narrow",
       "layout": "default bubbles",
       "status": "passed",
-      "seconds": 16.31
+      "seconds": 16.34
     },
     {
       "case": "live-working",
@@ -92,7 +92,7 @@
       "size": "narrow",
       "layout": "default bubbles",
       "status": "passed",
-      "seconds": 4.37
+      "seconds": 4.43
     },
     {
       "case": "live-working",
@@ -100,7 +100,7 @@
       "size": "narrow",
       "layout": "imessage",
       "status": "passed",
-      "seconds": 4.47
+      "seconds": 4.78
     },
     {
       "case": "running-open",
@@ -108,7 +108,7 @@
       "size": "narrow",
       "layout": "default bubbles",
       "status": "passed",
-      "seconds": 4.02
+      "seconds": 4.08
     },
     {
       "case": "questions",
@@ -116,7 +116,7 @@
       "size": "narrow",
       "layout": "default bubbles",
       "status": "passed",
-      "seconds": 4.28
+      "seconds": 4.22
     },
     {
       "case": "existing",
@@ -124,30 +124,51 @@
       "size": "narrow",
       "layout": "default bubbles",
       "status": "passed",
-      "seconds": 4.62
+      "seconds": 4.58
     }
   ],
-  "visual_review": "Representative equations, syntax/diff cards, dark/light and narrow layouts, iMessage typing, background table and centered Jump to latest reviewed on the exact-source native captures.",
+  "visual_review": "passed",
+  "visual_review_details": {
+    "reviewed_at_utc": "2026-11-02T02:33:35.896625+00:00",
+    "reviewed": "All13 native-window.png captures plus tools-open-dark-wide/jump-centered-window.png",
+    "observations": [
+      "Dark/light disclosure and red/green syntax-colored diffs fit their wide/narrow native windows.",
+      "Centered Jump to latest, iMessage activity/typing, elapsed/tokens/context, questions, and background/subagent statuses are visible and readable.",
+      "Native selection and input-resize input checks passed; math display is left aligned in this public baseline, as expected before the local alignment fix.",
+      "Long code lines remain horizontally scrollable; vertical content at viewport edges is intentionally clipped during scroll."
+    ],
+    "limits": [
+      "Synthetic native Linux/Xvfb fixtures; no native Windows/macOS or real-agent dialog testing in this queue."
+    ]
+  },
+  "resource_limits": {
+    "systemd_scope": "herdr-rich-public-native-ba328963.scope",
+    "cpu_quota_percent": 300,
+    "memory_max_bytes": 4294967296,
+    "swap_max_bytes": 0,
+    "nice": 15
+  },
   "published_images": {
     "diff-dark.png": {
-      "fixture_capture": "tools-open-dark-wide/native-window.png",
-      "sha256": "c28ddc58cf273b0d74191e4c69b918863ac19f7a4ce62732693e8931f87b5a55"
+      "fixture_capture": "tool-disclosure-dark-wide/native-window.png",
+      "sha256": "b1a8a12f603732d305392eb25019b6fee29c7f40cdb51e2286360243c87cf16c"
     },
     "diff-light-narrow.png": {
       "fixture_capture": "tool-disclosure-light-narrow/native-window.png",
-      "sha256": "1d7652ee7f73c5c6dc4881300efddd460fc1f947614d4a0e6a7c2b8b93cbda72"
+      "sha256": "c0335976bdc54f164fcf75505ae51296a1aec08ace30bb25544858aec23da840"
     },
     "jump-dark.png": {
       "fixture_capture": "tools-open-dark-wide/jump-centered-window.png",
-      "sha256": "6607712f1fcd81feb63a1ca3f4f20257ae2d8d5ce07cb767b92b31bcf57ccddf"
+      "sha256": "e213b0d059931c3f5576b85def3c4f4aa8c1c4f43f25efceb8ceecc41e238461"
     },
     "imessage-dark-narrow.png": {
       "fixture_capture": "live-working-dark-narrow-imessage/native-window.png",
-      "sha256": "e20a24cbdc9287511a5a868d12a53fa49dda3e65b797f791e0990f62996d9703"
+      "sha256": "06e1a51605d2f8efd7207425f43b8811aed17b9664022682b41d18c603ccaabd"
     },
     "background-light-narrow.png": {
       "fixture_capture": "running-open-light-narrow/native-window.png",
-      "sha256": "79c2af1c9c53eec2da95e1240f47da5c5ace306f9e91f015cf0034af60864a7e"
+      "sha256": "976aed4ee0f031090e78b792c9d5445cebea92646003ef68142ae529670f6b5b"
     }
-  }
+  },
+  "publication_review": "All five unmodified native-window images visually reviewed before publication. Synthetic fixtures only; public PR source, without local-only centering changes."
 }
