@@ -1,0 +1,81 @@
+{
+  "source_commit": "b8d3b2ae5d2e3a11c8fdef33c63ae3c819376b0b",
+  "source_tree": "e24784c92d14d7faa600345f7f273e50c68bafcc",
+  "source_manifest_sha256": "de250c51b5274fdb4f1ebf39c46c0ac71d2b596d1c387cec9a8c1633073ddd21",
+  "binary_sha256": "9501c3db533a839c136da5dac27b967199ade48e0478893aa430c914cccd2b4c",
+  "native_build_proof_sha256": "87da029dbcba36622d6f55b46cd00fbe29114c471efc7700fa4721238a8ce539",
+  "capture_results_sha256": "f891b55b9f76728085ce1368d0811ab047fa17c0db6125f780275df704219290",
+  "capture_worker_sha256": "e15507e8d6ff5df7952ddcabf37e6ef7faff418656dd2c45c198e36a36cc3067",
+  "window_capture_helper_sha256": "fae436486921b417d7e115fa2db84fcb19bf68a6cac348520c9fde097162c73e",
+  "driver_hashes": {
+    "scripts/check-rich-chat-native.py": "27f633ba461b617b277322cd3a4a17ba0ac9ce3edda0458ae6f208c6578cf43f",
+    "scripts/rich_chat_disclosure.py": "49c7267fb44171a87805ce554e74a7f62895db46a7848eceaee5413b6cafa911",
+    "scripts/rich_chat_jump.py": "b90a59346f0d0c7ac347cb4379d22029935d19c0a52bdc7dd06cf3b47b3802f5",
+    "scripts/rich_chat_native_input.py": "035ea00a34e039034ff789d5d5e5105750858b38e49a18409aefad4cb1c4c58b",
+    "scripts/rich_chat_resize.py": "254e0b9c237fec98a3f89332263542fb3661511092af28a3a7d27ca1b5465758"
+  },
+  "method": "Direct native-window PNG capture on isolated Xvfb; window PID verified against the fixture process.",
+  "fixtures": "Synthetic sample transcripts only; no connected provider or private runtime build.",
+  "coverage": {
+    "native_fixture_cases_passed": 5,
+    "disclosure_pointer_input": "passed in dark/light narrow layouts",
+    "jump_pointer_input": "passed in wide dark layout",
+    "working_state": "Explicit preview working flag; upstream step clocks and iMessage typing rendered."
+  },
+  "images": [
+    {
+      "file": "diff-dark-narrow.png",
+      "caption": "Expanded tool diff, dark narrow layout",
+      "sha256": "cd31cf206104f25fcc1e5da4c8548ef304b96d37a75f2eabbeba611d66190f5a",
+      "bytes": 77509,
+      "width": 650,
+      "height": 860,
+      "fixture_image": "tool-disclosure-dark-narrow-bubbles/tool-expanded-window.png"
+    },
+    {
+      "file": "diff-light-narrow.png",
+      "caption": "Expanded tool diff, light narrow layout",
+      "sha256": "64f27ccb2bdfceb121abcf6a830db9ee64ba167a30d5258b46ee2e7e8377435b",
+      "bytes": 76439,
+      "width": 650,
+      "height": 860,
+      "fixture_image": "tool-disclosure-light-narrow-bubbles/tool-expanded-window.png"
+    },
+    {
+      "file": "collapsed-dark-narrow.png",
+      "caption": "Same tool after a real disclosure click",
+      "sha256": "741cda2ee892f1ccbdb3c59b522e0891c42475da07c8c40765509984b8e40707",
+      "bytes": 56657,
+      "width": 650,
+      "height": 860,
+      "fixture_image": "tool-disclosure-dark-narrow-bubbles/tool-collapsed-window.png"
+    },
+    {
+      "file": "code-and-jump-dark-wide.png",
+      "caption": "Highlighted command output and centered jump control while reading earlier content",
+      "sha256": "1ce8dee2ac30fb5f416510ae54f722000105a494644a2340dcc65587e573a328",
+      "bytes": 96520,
+      "width": 1280,
+      "height": 860,
+      "fixture_image": "tools-open-dark-wide-bubbles/jump-centered-window.png"
+    },
+    {
+      "file": "working-steps-dark-wide.png",
+      "caption": "Upstream running-step descriptions and clocks, with the shared activity strip",
+      "sha256": "b95df25edb831109fcbabe08da8cd920cbf9712e7fc51569dd9e0208a80a2476",
+      "bytes": 79800,
+      "width": 1280,
+      "height": 860,
+      "fixture_image": "steps-open-dark-wide-bubbles/native-window.png"
+    },
+    {
+      "file": "typing-steps-light-narrow.png",
+      "caption": "Native iMessage typing cue and running steps in a narrow light layout",
+      "sha256": "6233a1dfd35a629d3f75129174addcc32d9b7565e1ce4f6a1838ae8a5caca179",
+      "bytes": 63722,
+      "width": 650,
+      "height": 860,
+      "fixture_image": "steps-open-light-narrow-imessage/native-window.png"
+    }
+  ]
+}
